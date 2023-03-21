@@ -24,11 +24,13 @@ import org.openmetadata.schema.type.ChangeDescription;
 import org.openmetadata.schema.type.EntityReference;
 import org.openmetadata.schema.type.ProviderType;
 import org.openmetadata.schema.type.TagLabel;
+import org.openmetadata.schema.type.Votes;
 
 /** Interface to be implemented by all entities to provide a way to access all the common fields. */
 public interface EntityInterface {
   // Lower case entity name to canonical entity name map
   Map<String, String> CANONICAL_ENTITY_NAME_MAP = new HashMap<>();
+  Map<String, Class<? extends EntityInterface>> ENTITY_TYPE_TO_CLASS_MAP = new HashMap<>();
 
   UUID getId();
 
@@ -65,6 +67,10 @@ public interface EntityInterface {
   }
 
   default List<EntityReference> getFollowers() {
+    return null;
+  }
+
+  default Votes getVotes() {
     return null;
   }
 

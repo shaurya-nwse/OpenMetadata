@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,7 +11,7 @@
  *  limitations under the License.
  */
 
-import { LeafNodes, LineagePos, LoadingNodeState, LoadingState } from 'Models';
+import { LoadingState } from 'Models';
 import { HTMLAttributes } from 'react';
 import { Edge as FlowEdge, FitViewOptions, Node } from 'reactflow';
 import { EntityType } from '../../enums/entity.enum';
@@ -29,19 +29,10 @@ export interface SelectedNode {
 }
 
 export interface EntityLineageProp {
-  isNodeLoading: LoadingNodeState;
-  lineageLeafNodes: LeafNodes;
-  entityLineage: EntityLineage;
   entityType: EntityType;
   deleted?: boolean;
   hasEditAccess?: boolean;
-  isLoading?: boolean;
-  loadNodeHandler: (node: EntityReference, pos: LineagePos) => void;
-  addLineageHandler: (edge: Edge) => Promise<void>;
-  removeLineageHandler: (data: EdgeData) => void;
-  entityLineageHandler: (lineage: EntityLineage) => void;
-  onFullScreenClick?: () => void;
-  onExitFullScreenViewClick?: () => void;
+  isFullScreen?: boolean;
 }
 
 export interface Edge {
@@ -133,5 +124,46 @@ export interface ControlProps extends HTMLAttributes<HTMLDivElement> {
   status: LoadingState;
   zoomValue: number;
   lineageData: EntityLineage;
+  lineageConfig: LineageConfig;
   onOptionSelect: (value?: string) => void;
+  onLineageConfigUpdate: (config: LineageConfig) => void;
+}
+
+export type LineagePos = 'from' | 'to';
+
+export interface LeafNodes {
+  upStreamNode: Array<string>;
+  downStreamNode: Array<string>;
+}
+export interface LoadingNodeState {
+  id: string | undefined;
+  state: boolean;
+}
+
+export interface EntityReferenceChild extends EntityReference {
+  /**
+   * Children of this entity, if any.
+   */
+  children?: EntityReferenceChild[];
+  parents?: EntityReferenceChild[];
+  pageIndex?: number;
+  edgeType?: EdgeTypeEnum;
+}
+
+export interface NodeIndexMap {
+  upstream: number[];
+  downstream: number[];
+}
+
+export interface LineageConfig {
+  upstreamDepth: number;
+  downstreamDepth: number;
+  nodesPerLayer: number;
+}
+
+export interface LineageConfigModalProps {
+  visible: boolean;
+  config: LineageConfig;
+  onCancel: () => void;
+  onSave: (config: LineageConfig) => void;
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,28 +11,32 @@
  *  limitations under the License.
  */
 
+import { Button } from 'antd';
 import React, { Fragment, FunctionComponent, useState } from 'react';
-import { DbtConfig } from '../../../generated/metadataIngestion/databaseServiceMetadataPipeline';
+import { useTranslation } from 'react-i18next';
+import { DbtConfig } from '../../../generated/metadataIngestion/dbtPipeline';
 import {
   errorMsg,
   getSeparator,
   requiredField,
 } from '../../../utils/CommonUtils';
 import { validateDbtHttpConfig } from '../../../utils/DBTConfigFormUtil';
-import { Button } from '../../buttons/Button/Button';
 import { Field } from '../../Field/Field';
+import DBTCommonFields from './DBTCommonFields.component';
 import {
   DbtConfigHttp,
   DBTFormCommonProps,
   ErrorDbtHttp,
 } from './DBTConfigForm.interface';
-import SwitchField from './SwitchField.component';
 
 interface Props extends DBTFormCommonProps, DbtConfigHttp {
   handleCatalogHttpPathChange: (value: string) => void;
   handleManifestHttpPathChange: (value: string) => void;
   handleRunResultsHttpPathChange: (value: string) => void;
   handleUpdateDescriptions: (value: boolean) => void;
+  handleUpdateDBTClassification: (value: string) => void;
+  enableDebugLog: boolean;
+  handleEnableDebugLogCheck: (value: boolean) => void;
 }
 
 export const DBTHttpConfig: FunctionComponent<Props> = ({
@@ -48,8 +52,13 @@ export const DBTHttpConfig: FunctionComponent<Props> = ({
   handleManifestHttpPathChange,
   handleRunResultsHttpPathChange,
   handleUpdateDescriptions,
+  dbtClassificationName,
+  handleUpdateDBTClassification,
+  enableDebugLog,
+  handleEnableDebugLogCheck,
 }: Props) => {
   const [errors, setErrors] = useState<ErrorDbtHttp>();
+  const { t } = useTranslation();
 
   const validate = (data: DbtConfig) => {
     const { isValid, errors: reqErrors } = validateDbtHttpConfig(data);
@@ -64,6 +73,7 @@ export const DBTHttpConfig: FunctionComponent<Props> = ({
       dbtManifestHttpPath,
       dbtRunResultsHttpPath,
       dbtUpdateDescriptions,
+      dbtClassificationName,
     };
     if (validate(submitData)) {
       onSubmit(submitData);
@@ -74,10 +84,10 @@ export const DBTHttpConfig: FunctionComponent<Props> = ({
     <Fragment>
       <Field>
         <label className="tw-block tw-form-label tw-mb-1" htmlFor="catalog-url">
-          {requiredField('DBT Catalog Http Path')}
+          {t('label.dbt-catalog-http-path')}
         </label>
         <p className="tw-text-grey-muted tw-mt-1 tw-mb-2 tw-text-xs">
-          DBT catalog file to extract dbt models with their column schemas.
+          {t('message.dbt-catalog-file-extract-path')}
         </p>
         <input
           className="tw-form-inputs tw-form-inputs-padding"
@@ -94,11 +104,10 @@ export const DBTHttpConfig: FunctionComponent<Props> = ({
         <label
           className="tw-block tw-form-label tw-mb-1"
           htmlFor="manifest-url">
-          {requiredField('DBT Manifest Http Path')}
+          {requiredField(t('message.dbt-manifest-file-path'))}
         </label>
         <p className="tw-text-grey-muted tw-mt-1 tw-mb-2 tw-text-xs">
-          DBT manifest file path to extract dbt models and associate with
-          tables.
+          {t('message.dbt-manifest-file-path')}
         </p>
         <input
           className="tw-form-inputs tw-form-inputs-padding"
@@ -109,15 +118,16 @@ export const DBTHttpConfig: FunctionComponent<Props> = ({
           value={dbtManifestHttpPath}
           onChange={(e) => handleManifestHttpPathChange(e.target.value)}
         />
+        {errors?.dbtManifestHttpPath && errorMsg(errors.dbtManifestHttpPath)}
       </Field>
       <Field>
         <label
           className="tw-block tw-form-label tw-mb-1"
           htmlFor="run-result-file">
-          DBT Run Results File Path
+          {t('label.dbt-run-result-http-path')}
         </label>
         <p className="tw-text-grey-muted tw-mt-1 tw-mb-2 tw-text-xs">
-          DBT run results file path to extract the test results information.
+          {t('message.dbt-run-result-http-path-message')}
         </p>
         <input
           className="tw-form-inputs tw-form-inputs-padding"
@@ -133,32 +143,33 @@ export const DBTHttpConfig: FunctionComponent<Props> = ({
       </Field>
       {getSeparator('')}
 
-      <SwitchField
+      <DBTCommonFields
+        dbtClassificationName={dbtClassificationName}
         dbtUpdateDescriptions={dbtUpdateDescriptions}
+        descriptionId="http-update-description"
+        enableDebugLog={enableDebugLog}
+        handleEnableDebugLogCheck={handleEnableDebugLogCheck}
+        handleUpdateDBTClassification={handleUpdateDBTClassification}
         handleUpdateDescriptions={handleUpdateDescriptions}
-        id="http-update-description"
       />
 
       {getSeparator('')}
 
-      <Field className="tw-flex tw-justify-end">
+      <Field className="d-flex justify-end">
         <Button
-          className="tw-mr-2"
+          className="m-r-xs"
           data-testid="back-button"
-          size="regular"
-          theme="primary"
-          variant="text"
+          type="link"
           onClick={onCancel}>
-          <span>{cancelText}</span>
+          {cancelText}
         </Button>
 
         <Button
+          className="font-medium p-x-md p-y-xxs h-auto rounded-6"
           data-testid="submit-btn"
-          size="regular"
-          theme="primary"
-          variant="contained"
+          type="primary"
           onClick={handleSubmit}>
-          <span>{okText}</span>
+          {okText}
         </Button>
       </Field>
     </Fragment>

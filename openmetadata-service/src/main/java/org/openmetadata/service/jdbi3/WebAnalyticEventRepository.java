@@ -10,7 +10,6 @@ import org.jdbi.v3.sqlobject.transaction.Transaction;
 import org.openmetadata.schema.analytics.WebAnalyticEvent;
 import org.openmetadata.schema.analytics.WebAnalyticEventData;
 import org.openmetadata.schema.analytics.type.WebAnalyticEventType;
-import org.openmetadata.schema.type.EntityReference;
 import org.openmetadata.service.util.EntityUtil;
 import org.openmetadata.service.util.JsonUtils;
 import org.openmetadata.service.util.ResultList;
@@ -33,8 +32,7 @@ public class WebAnalyticEventRepository extends EntityRepository<WebAnalyticEven
   }
 
   @Override
-  public WebAnalyticEvent setFields(WebAnalyticEvent entity, EntityUtil.Fields fields) throws IOException {
-    entity.setOwner(fields.contains("owner") ? getOwner(entity) : null);
+  public WebAnalyticEvent setFields(WebAnalyticEvent entity, EntityUtil.Fields fields) {
     return entity;
   }
 
@@ -45,12 +43,7 @@ public class WebAnalyticEventRepository extends EntityRepository<WebAnalyticEven
 
   @Override
   public void storeEntity(WebAnalyticEvent entity, boolean update) throws IOException {
-    EntityReference owner = entity.getOwner();
-
-    entity.withOwner(null).withHref(null);
     store(entity, update);
-
-    entity.withOwner(owner);
   }
 
   @Override
@@ -73,7 +66,7 @@ public class WebAnalyticEventRepository extends EntityRepository<WebAnalyticEven
   }
 
   @Transaction
-  public void deleteWebAnalyticEventData(WebAnalyticEventType name, Long timestamp) throws IOException {
+  public void deleteWebAnalyticEventData(WebAnalyticEventType name, Long timestamp) {
     daoCollection
         .entityExtensionTimeSeriesDao()
         .deleteBeforeExclusive(name.value(), WEB_ANALYTICS_EVENT_DATA_EXTENSION, timestamp);

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,9 +11,7 @@
  *  limitations under the License.
  */
 
-/* eslint-disable @typescript-eslint/camelcase */
-
-import { getAllByTestId, render } from '@testing-library/react';
+import { getAllByTestId, getByTestId, render } from '@testing-library/react';
 import React from 'react';
 import { Aggregations } from '../../../interface/search.interface';
 import FacetFilter from './FacetFilter';
@@ -39,7 +37,7 @@ const aggregations: Aggregations = {
       },
     ],
   },
-  tier: {
+  'tier.tagFQN': {
     buckets: [],
   },
   'service.name.keyword': {
@@ -100,6 +98,10 @@ const aggregations: Aggregations = {
   },
 };
 
+jest.mock('utils/EntityUtils', () => ({
+  getSortedTierBucketList: jest.fn().mockReturnValue([]),
+}));
+
 const filters = {
   serviceType: ['BigQuery', 'Glue'],
   'service.name.keyword': ['bigquery_gcp', 'glue'],
@@ -110,6 +112,22 @@ const filters = {
 };
 
 describe('Test FacetFilter Component', () => {
+  it('Should render page with empty aggregations buckets', () => {
+    const { container } = render(
+      <FacetFilter
+        aggregations={{}}
+        filters={{}}
+        onChangeShowDeleted={onChangeShowDelete}
+        onClearFilter={onClearFilter}
+        onSelectHandler={onSelectHandler}
+      />
+    );
+
+    const filterPanel = getByTestId(container, 'face-filter');
+
+    expect(filterPanel).toBeInTheDocument();
+  });
+
   it('Should render all aggregations with non-empty buckets when no filters', () => {
     const { container } = render(
       <FacetFilter
@@ -125,7 +143,7 @@ describe('Test FacetFilter Component', () => {
       content.startsWith('filter-heading-')
     );
 
-    expect(filterHeadings.length).toBe(7);
+    expect(filterHeadings).toHaveLength(7);
     expect(
       filterHeadings.map((fh) => fh.getAttribute('data-testid')).sort()
     ).toStrictEqual(
@@ -158,7 +176,7 @@ describe('Test FacetFilter Component', () => {
       content.startsWith('filter-heading-')
     );
 
-    expect(filterHeadings.length).toBe(8);
+    expect(filterHeadings).toHaveLength(8);
     expect(
       filterHeadings.map((fh) => fh.getAttribute('data-testid')).sort()
     ).toStrictEqual(

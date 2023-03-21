@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,20 +11,25 @@
  *  limitations under the License.
  */
 
-import { faExclamationCircle, faStar } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { ExclamationCircleOutlined, StarFilled } from '@ant-design/icons';
 import { Button, Popover, Space, Tooltip } from 'antd';
 import { AxiosError } from 'axios';
 import classNames from 'classnames';
+import Tags from 'components/Tag/Tags/tags';
 import { t } from 'i18next';
 import { cloneDeep, isEmpty, isUndefined } from 'lodash';
-import { EntityFieldThreads, EntityTags, ExtraInfo, TagOption } from 'Models';
+import { EntityTags, ExtraInfo, TagOption } from 'Models';
 import React, { Fragment, useCallback, useEffect, useState } from 'react';
 import { useHistory } from 'react-router-dom';
-import { getActiveAnnouncement } from '../../../axiosAPIs/feedsAPI';
+import { getActiveAnnouncement } from 'rest/feedsAPI';
+import { ReactComponent as IconCommentPlus } from '../../../assets/svg/add-chat.svg';
+import { ReactComponent as IconComments } from '../../../assets/svg/comment.svg';
+import { ReactComponent as IconEdit } from '../../../assets/svg/ic-edit.svg';
+import { ReactComponent as IconRequest } from '../../../assets/svg/request-icon.svg';
+import { ReactComponent as IconTagGrey } from '../../../assets/svg/tag-grey.svg';
+import { ReactComponent as IconTaskColor } from '../../../assets/svg/Task-ic.svg';
 import { FQN_SEPARATOR_CHAR } from '../../../constants/char.constants';
 import { FOLLOWERS_VIEW_CAP } from '../../../constants/constants';
-import { SettledStatus } from '../../../enums/axios.enum';
 import { EntityType } from '../../../enums/entity.enum';
 import { Dashboard } from '../../../generated/entity/data/dashboard';
 import { Table } from '../../../generated/entity/data/table';
@@ -32,23 +37,19 @@ import { Thread, ThreadType } from '../../../generated/entity/feed/thread';
 import { EntityReference } from '../../../generated/type/entityReference';
 import { LabelType, State, TagLabel } from '../../../generated/type/tagLabel';
 import { useAfterMount } from '../../../hooks/useAfterMount';
+import { EntityFieldThreads } from '../../../interface/feed.interface';
 import { ANNOUNCEMENT_ENTITIES } from '../../../utils/AnnouncementsUtils';
 import { getEntityFeedLink } from '../../../utils/EntityUtils';
-import {
-  fetchGlossaryTerms,
-  getGlossaryTermlist,
-} from '../../../utils/GlossaryUtils';
-import SVGIcons, { Icons } from '../../../utils/SvgUtils';
-import { getTagCategories, getTaglist } from '../../../utils/TagsUtils';
+import SVGIcons from '../../../utils/SvgUtils';
+import { fetchTagsAndGlossaryTerms } from '../../../utils/TagsUtils';
 import {
   getRequestTagsPath,
   getUpdateTagsPath,
   TASK_ENTITIES,
 } from '../../../utils/TasksUtils';
 import { showErrorToast } from '../../../utils/ToastUtils';
-import TagsContainer from '../../tags-container/tags-container';
-import TagsViewer from '../../tags-viewer/tags-viewer';
-import Tags from '../../tags/tags';
+import TagsContainer from '../../Tag/TagsContainer/tags-container';
+import TagsViewer from '../../Tag/TagsViewer/tags-viewer';
 import EntitySummaryDetails from '../EntitySummaryDetails/EntitySummaryDetails';
 import ProfilePicture from '../ProfilePicture/ProfilePicture';
 import TitleBreadcrumb from '../title-breadcrumb/title-breadcrumb.component';
@@ -87,6 +88,8 @@ interface Props {
   currentOwner?: Dashboard['owner'];
   removeTier?: () => void;
   onRestoreEntity?: () => void;
+  allowSoftDelete?: boolean;
+  isRecursiveDelete?: boolean;
 }
 
 const EntityPageInfo = ({
@@ -118,6 +121,8 @@ const EntityPageInfo = ({
   entityFieldTasks,
   removeTier,
   onRestoreEntity,
+  isRecursiveDelete = false,
+  allowSoftDelete,
 }: Props) => {
   const history = useHistory();
   const tagThread = entityFieldThreads?.[0];
@@ -127,7 +132,6 @@ const EntityPageInfo = ({
     useState<Array<EntityReference>>(followersList);
   const [isViewMore, setIsViewMore] = useState<boolean>(false);
   const [tagList, setTagList] = useState<Array<TagOption>>([]);
-  const [tagFetchFailed, setTagFetchFailed] = useState<boolean>(false);
   const [isTagLoading, setIsTagLoading] = useState<boolean>(false);
   const [versionFollowButtonWidth, setVersionFollowButtonWidth] = useState(
     document.getElementById('version-and-follow-section')?.offsetWidth
@@ -216,13 +220,13 @@ const EntityPageInfo = ({
             ))}
           </div>
         ) : (
-          <p>{entityName} doesn&#39;t have any followers yet</p>
+          <p>{t('message.entity-does-not-have-followers', { entityName })}</p>
         )}
         {list.length > FOLLOWERS_VIEW_CAP && (
           <p
             className="link-text tw-text-sm tw-py-2"
             onClick={() => setIsViewMore(true)}>
-            View more
+            {t('label.view-more')}
           </p>
         )}
       </div>
@@ -246,7 +250,7 @@ const EntityPageInfo = ({
               alt="version icon"
               icon={isVersionSelected ? 'icon-version-white' : 'icon-version'}
             />
-            <span>Versions</span>
+            <span>{t('label.version-plural')}</span>
           </span>
           <span
             className={classNames(
@@ -261,81 +265,44 @@ const EntityPageInfo = ({
     );
   };
 
-  const fetchTagsAndGlossaryTerms = () => {
+  const fetchTags = async () => {
     setIsTagLoading(true);
-    Promise.allSettled([getTagCategories(), fetchGlossaryTerms()])
-      .then((values) => {
-        let tagsAndTerms: TagOption[] = [];
-        if (
-          values[0].status === SettledStatus.FULFILLED &&
-          values[0].value.data
-        ) {
-          tagsAndTerms = getTaglist(values[0].value.data).map((tag) => {
-            return { fqn: tag, source: 'Tag' };
-          });
-        }
-        if (
-          values[1].status === SettledStatus.FULFILLED &&
-          values[1].value &&
-          values[1].value.length > 0
-        ) {
-          const glossaryTerms: TagOption[] = getGlossaryTermlist(
-            values[1].value
-          ).map((tag) => {
-            return { fqn: tag, source: 'Glossary' };
-          });
-          tagsAndTerms = [...tagsAndTerms, ...glossaryTerms];
-        }
-        setTagList(tagsAndTerms);
-        if (
-          values[0].status === SettledStatus.FULFILLED &&
-          values[1].status === SettledStatus.FULFILLED
-        ) {
-          setTagFetchFailed(false);
-        } else {
-          setTagFetchFailed(true);
-        }
-      })
-      .catch(() => {
-        setTagList([]);
-        setTagFetchFailed(true);
-      })
-      .finally(() => {
-        setIsTagLoading(false);
-      });
+    try {
+      const tags = await fetchTagsAndGlossaryTerms();
+      setTagList(tags);
+    } catch (error) {
+      setTagList([]);
+    }
+    setIsTagLoading(false);
   };
 
   const getThreadElements = () => {
     if (!isUndefined(entityFieldThreads)) {
       return !isUndefined(tagThread) ? (
-        <button
-          className="tw-w-7 tw-h-7 tw-flex-none link-text focus:tw-outline-none"
+        <Button
+          className="p-0"
           data-testid="tag-thread"
+          size="small"
+          type="text"
           onClick={() => onThreadLinkSelect?.(tagThread.entityLink)}>
-          <span className="tw-flex">
-            <SVGIcons
-              alt="comments"
-              className="tw-mt-0.5"
-              height="16px"
-              icon={Icons.COMMENT}
-              width="16px"
-            />
-            <span className="tw-ml-1" data-testid="tag-thread-count">
-              {tagThread.count}
-            </span>
-          </span>
-        </button>
+          <Space align="center" className="w-full h-full" size={2}>
+            <IconComments height={16} name="comments" width={16} />
+            <span data-testid="tag-thread-count">{tagThread.count}</span>
+          </Space>
+        </Button>
       ) : (
-        <button
-          className="tw-w-7 tw-h-7 tw-flex-none link-text focus:tw-outline-none tw-align-top"
+        <Button
+          className="p-0"
           data-testid="start-tag-thread"
+          size="small"
+          type="text"
           onClick={() =>
             onThreadLinkSelect?.(
               getEntityFeedLink(entityType, entityFqn, 'tags')
             )
           }>
-          <SVGIcons alt="comments" icon={Icons.COMMENT_PLUS} width="16px" />
-        </button>
+          <IconCommentPlus height={16} name="comments" width={16} />
+        </Button>
       );
     } else {
       return null;
@@ -344,13 +311,17 @@ const EntityPageInfo = ({
 
   const getRequestTagsElements = useCallback(() => {
     const hasTags = !isEmpty(tags);
-    const text = hasTags ? 'Update request tags' : 'Request tags';
+    const text = hasTags
+      ? t('label.update-request-tag-plural')
+      : t('label.request-tag-plural');
 
     return onThreadLinkSelect &&
       TASK_ENTITIES.includes(entityType as EntityType) ? (
-      <button
-        className="tw-w-7 tw-h-7 tw-mr-1 tw-flex-none link-text focus:tw-outline-none tw-align-top"
+      <Button
+        className="p-0"
         data-testid="request-entity-tags"
+        size="small"
+        type="text"
         onClick={hasTags ? handleUpdateTags : handleRequestTags}>
         <Popover
           destroyTooltipOnHide
@@ -358,27 +329,32 @@ const EntityPageInfo = ({
           overlayClassName="ant-popover-request-description"
           trigger="hover"
           zIndex={9999}>
-          <SVGIcons alt="request-tags" icon={Icons.REQUEST} />
+          <IconRequest
+            className="anticon"
+            height={16}
+            name="request-tags"
+            width={16}
+          />
         </Popover>
-      </button>
+      </Button>
     ) : null;
   }, [tags]);
 
   const getTaskElement = useCallback(() => {
     return !isUndefined(tagTask) ? (
-      <button
-        className="tw-w-8 tw-h-8 tw-mr-1 tw--mt-0.5 tw-flex-none link-text focus:tw-outline-none"
+      <Button
+        className="p-0"
         data-testid="tag-task"
+        size="small"
+        type="text"
         onClick={() =>
           onThreadLinkSelect?.(tagTask.entityLink, ThreadType.Task)
         }>
-        <span className="tw-flex">
-          <SVGIcons alt="comments" icon={Icons.TASK_ICON} width="16px" />
-          <span className="tw-ml-1" data-testid="tag-task-count">
-            {tagTask.count}
-          </span>
-        </span>
-      </button>
+        <Space align="center" className="w-full h-full" size={2}>
+          <IconTaskColor height={16} name="comments" width={16} />
+          <span data-testid="tag-task-count">{tagTask.count}</span>
+        </Space>
+      </Button>
     ) : null;
   }, [tagTask]);
 
@@ -423,17 +399,10 @@ const EntityPageInfo = ({
             }
           />
           {deleted && (
-            <>
-              <div
-                className="tw-rounded tw-bg-error-lite tw-text-error tw-font-medium tw-h-6 tw-px-2 tw-py-0.5 tw-ml-2"
-                data-testid="deleted-badge">
-                <FontAwesomeIcon
-                  className="tw-mr-1"
-                  icon={faExclamationCircle}
-                />
-                Deleted
-              </div>
-            </>
+            <div className="deleted-badge-button" data-testid="deleted-badge">
+              <ExclamationCircleOutlined className="tw-mr-1" />
+              {t('label.deleted')}
+            </div>
           )}
         </Space>
         <Space align="center" id="version-and-follow-section">
@@ -444,8 +413,7 @@ const EntityPageInfo = ({
                   placement="bottom"
                   title={
                     <p className="tw-text-xs">
-                      Viewing older version <br />
-                      Go to latest to update details
+                      {t('message.viewing-older-version')}
                     </p>
                   }
                   trigger="hover">
@@ -469,17 +437,8 @@ const EntityPageInfo = ({
                 !deleted && followHandler?.();
               }}>
               <Space>
-                {isFollowing ? (
-                  <>
-                    <FontAwesomeIcon className="tw-text-xs" icon={faStar} />
-                    Unfollow
-                  </>
-                ) : (
-                  <>
-                    <FontAwesomeIcon className="tw-text-xs" icon={faStar} />
-                    Follow
-                  </>
-                )}
+                <StarFilled className="tw-text-xs" />
+                {isFollowing ? t('label.un-follow') : t('label.follow')}
                 <Popover content={getFollowers()} trigger="click">
                   <span
                     className={classNames(
@@ -496,13 +455,18 @@ const EntityPageInfo = ({
           ) : null}
           {!isVersionSelected && (
             <ManageButton
-              allowSoftDelete={!deleted}
+              allowSoftDelete={
+                entityType === EntityType.DATABASE_SCHEMA
+                  ? allowSoftDelete
+                  : !deleted
+              }
               canDelete={canDelete}
               deleted={deleted}
               entityFQN={entityFqn}
               entityId={entityId}
               entityName={entityName}
               entityType={entityType}
+              isRecursiveDelete={isRecursiveDelete}
               onAnnouncementClick={() => setIsAnnouncementDrawer(true)}
               onRestoreEntity={onRestoreEntity}
             />
@@ -512,12 +476,7 @@ const EntityPageInfo = ({
 
       <Space wrap className="tw-justify-between" style={{ width: '100%' }}>
         <Space direction="vertical">
-          <Space
-            wrap
-            align="center"
-            className="m-t-xss"
-            data-testid="extrainfo"
-            size={4}>
+          <Space wrap align="center" data-testid="extrainfo" size={4}>
             {extraInfo.map((info, index) => (
               <span
                 className="tw-flex tw-items-center"
@@ -535,27 +494,19 @@ const EntityPageInfo = ({
                 />
                 {extraInfo.length !== 1 && index < extraInfo.length - 1 ? (
                   <span className="tw-mx-1.5 tw-inline-block tw-text-gray-400">
-                    |
+                    {t('label.pipe-symbol')}
                   </span>
                 ) : null}
               </span>
             ))}
           </Space>
-          <Space
-            wrap
-            align="start"
-            className="m-t-xss"
-            data-testid="entity-tags"
-            size={2}>
+          <Space wrap align="center" data-testid="entity-tags" size={6}>
             {(!isEditable || !isTagEditable || deleted) && (
               <>
                 {(tags.length > 0 || !isEmpty(tier)) && (
-                  <SVGIcons
-                    alt="icon-tag"
-                    className="tw-mx-1"
-                    icon="icon-tag-grey"
-                    width="16px"
-                  />
+                  <span className="d-flex align-center h-4">
+                    <IconTagGrey height={18} name="icon-tag" width={18} />
+                  </span>
                 )}
                 {tier?.tagFQN && (
                   <Tags
@@ -572,17 +523,20 @@ const EntityPageInfo = ({
             )}
             {isTagEditable && !deleted && (
               <Fragment>
-                <div
-                  className="tw-inline-block"
+                <Space
+                  align="center"
+                  className="w-full h-full"
                   data-testid="tags-wrapper"
+                  size={8}
                   onClick={() => {
                     // Fetch tags and terms only once
-                    if (tagList.length === 0 || tagFetchFailed) {
-                      fetchTagsAndGlossaryTerms();
+                    if (tagList.length === 0) {
+                      fetchTags();
                     }
                     setIsEditable(true);
                   }}>
                   <TagsContainer
+                    className="w-min-20"
                     dropDownHorzPosRight={false}
                     editable={isEditable}
                     isLoading={isTagLoading}
@@ -597,34 +551,35 @@ const EntityPageInfo = ({
                       handleTagSelection(tags);
                     }}>
                     {tags.length || tier ? (
-                      <button
-                        className="tw-w-7 tw-h-7 tw-flex-none focus:tw-outline-none"
-                        data-testid="edit-button">
-                        <SVGIcons
-                          alt="edit"
-                          className="tw--mt-3 "
-                          icon="icon-edit"
-                          title="Edit"
-                          width="16px"
+                      <Button
+                        className="p-0"
+                        data-testid="edit-button"
+                        size="small"
+                        type="text">
+                        <IconEdit
+                          className="anticon"
+                          height={16}
+                          name={t('label.edit')}
+                          width={16}
                         />
-                      </button>
+                      </Button>
                     ) : (
-                      <span>
-                        <Tags
-                          className="tw-text-primary"
-                          startWith="+ "
-                          tag="Add tag"
-                          type="label"
-                        />
-                      </span>
+                      <Tags
+                        className="tw-text-primary"
+                        startWith="+ "
+                        tag={t('label.add-entity', {
+                          entity: t('label.tag-lowercase'),
+                        })}
+                        type="label"
+                      />
                     )}
                   </TagsContainer>
-                </div>
-                <div className="tw--mt-1.5">
+                </Space>
+                <>
                   {getRequestTagsElements()}
                   {getTaskElement()}
                   {getThreadElements()}
-                </div>
+                </>
               </Fragment>
             )}
           </Space>
@@ -637,7 +592,7 @@ const EntityPageInfo = ({
         )}
       </Space>
       <FollowersModal
-        header={t('label.followers-of', {
+        header={t('label.followers-of-entity-name', {
           entityName,
         })}
         list={entityFollowers}

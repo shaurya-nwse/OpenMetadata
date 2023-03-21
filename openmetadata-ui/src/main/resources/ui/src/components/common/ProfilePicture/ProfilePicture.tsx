@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -15,9 +15,9 @@ import classNames from 'classnames';
 import { observer } from 'mobx-react';
 import { ImageShape } from 'Models';
 import React, { useMemo } from 'react';
+import { getEntityName } from 'utils/EntityUtils';
 import AppState from '../../../AppState';
 import { EntityReference, User } from '../../../generated/entity/teams/user';
-import { getEntityName } from '../../../utils/CommonUtils';
 import { userPermissions } from '../../../utils/PermissionsUtils';
 import { getUserProfilePic } from '../../../utils/UserDataUtils';
 import Loader from '../../Loader/Loader';

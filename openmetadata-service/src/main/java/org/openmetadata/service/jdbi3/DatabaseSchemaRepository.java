@@ -32,7 +32,7 @@ import org.openmetadata.service.util.EntityUtil.Fields;
 import org.openmetadata.service.util.FullyQualifiedName;
 
 public class DatabaseSchemaRepository extends EntityRepository<DatabaseSchema> {
-  private static final String DATABASE_SCHEMA_UPDATE_FIELDS = "owner";
+  private static final String DATABASE_SCHEMA_UPDATE_FIELDS = "owner,tags";
   private static final String DATABASE_SCHEMA_PATCH_FIELDS = DATABASE_SCHEMA_UPDATE_FIELDS;
 
   public DatabaseSchemaRepository(CollectionDAO dao) {
@@ -59,16 +59,13 @@ public class DatabaseSchemaRepository extends EntityRepository<DatabaseSchema> {
 
   @Override
   public void storeEntity(DatabaseSchema schema, boolean update) throws IOException {
-    // Relationships and fields such as href are derived and not stored as part of json
-    EntityReference owner = schema.getOwner();
+    // Relationships and fields such as service are derived and not stored as part of json
     EntityReference service = schema.getService();
-
-    // Don't store owner, database, href and tags as JSON. Build it on the fly based on relationships
-    schema.withOwner(null).withService(null).withHref(null);
+    schema.withService(null);
 
     store(schema, update);
     // Restore the relationships
-    schema.withOwner(owner).withService(service);
+    schema.withService(service);
   }
 
   @Override
@@ -77,6 +74,8 @@ public class DatabaseSchemaRepository extends EntityRepository<DatabaseSchema> {
     addRelationship(
         database.getId(), schema.getId(), database.getType(), Entity.DATABASE_SCHEMA, Relationship.CONTAINS);
     storeOwner(schema, schema.getOwner());
+    // Add tag to databaseSchema relationship
+    applyTags(schema);
   }
 
   private List<EntityReference> getTables(DatabaseSchema schema) throws IOException {
@@ -92,14 +91,13 @@ public class DatabaseSchemaRepository extends EntityRepository<DatabaseSchema> {
     setDefaultFields(schema);
     schema.setOwner(fields.contains(FIELD_OWNER) ? getOwner(schema) : null);
     schema.setTables(fields.contains("tables") ? getTables(schema) : null);
-    schema.setUsageSummary(
+    return schema.withUsageSummary(
         fields.contains("usageSummary") ? EntityUtil.getLatestUsage(daoCollection.usageDAO(), schema.getId()) : null);
-    return schema;
   }
 
   private void setDefaultFields(DatabaseSchema schema) throws IOException {
     EntityReference databaseRef = getContainer(schema.getId());
-    Database database = Entity.getEntity(databaseRef, Fields.EMPTY_FIELDS, Include.ALL);
+    Database database = Entity.getEntity(databaseRef, "", Include.ALL);
     schema.withDatabase(databaseRef).withService(database.getService());
   }
 

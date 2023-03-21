@@ -20,8 +20,8 @@ from typing import Generic, List, Optional, Type, TypeVar
 from pydantic import BaseModel
 
 from metadata.ingestion.ometa.client import REST
-from metadata.ingestion.ometa.utils import ometa_logger
 from metadata.utils.elasticsearch import ES_INDEX_MAP
+from metadata.utils.logger import ometa_logger
 
 logger = ometa_logger()
 
@@ -39,9 +39,12 @@ class ESMixin(Generic[T]):
 
     fqdn_search = "/search/query?q=fullyQualifiedName:{fqn}&from={from_}&size={size}&index={index}"
 
-    @functools.lru_cache()
+    @functools.lru_cache(maxsize=512)
     def _search_es_entity(
-        self, entity_type: Type[T], query_string: str
+        self,
+        entity_type: Type[T],
+        query_string: str,
+        fields: Optional[List[str]] = None,
     ) -> Optional[List[T]]:
         """
         Run the ES query and return a list of entities that match
@@ -56,6 +59,7 @@ class ESMixin(Generic[T]):
                 self.get_by_name(
                     entity=entity_type,
                     fqn=hit["_source"]["fullyQualifiedName"],
+                    fields=fields,
                 )
                 for hit in response["hits"]["hits"]
             ] or None
@@ -68,6 +72,7 @@ class ESMixin(Generic[T]):
         fqn_search_string: str,
         from_count: int = 0,
         size: int = 10,
+        fields: Optional[List[str]] = None,
     ) -> Optional[List[T]]:
         """
         Given a service_name and some filters, search for entities using ES
@@ -87,7 +92,7 @@ class ESMixin(Generic[T]):
 
         try:
             response = self._search_es_entity(
-                entity_type=entity_type, query_string=query_string
+                entity_type=entity_type, query_string=query_string, fields=fields
             )
             return response
         except KeyError as err:

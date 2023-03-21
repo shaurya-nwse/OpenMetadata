@@ -14,14 +14,11 @@
 package org.openmetadata.service.jdbi3;
 
 import static org.openmetadata.service.Entity.DASHBOARD_SERVICE;
-import static org.openmetadata.service.Entity.FIELD_OWNER;
 
 import java.io.IOException;
-import java.util.List;
 import org.openmetadata.schema.entity.data.Metrics;
 import org.openmetadata.schema.type.EntityReference;
 import org.openmetadata.schema.type.Relationship;
-import org.openmetadata.schema.type.TagLabel;
 import org.openmetadata.service.Entity;
 import org.openmetadata.service.exception.CatalogExceptionMessage;
 import org.openmetadata.service.resources.metrics.MetricsResource;
@@ -51,10 +48,8 @@ public class MetricsRepository extends EntityRepository<Metrics> {
   @Override
   public Metrics setFields(Metrics metrics, Fields fields) throws IOException {
     metrics.setService(getContainer(metrics.getId())); // service is a default field
-    metrics.setOwner(fields.contains(FIELD_OWNER) ? getOwner(metrics) : null);
-    metrics.setUsageSummary(
+    return metrics.withUsageSummary(
         fields.contains("usageSummary") ? EntityUtil.getLatestUsage(daoCollection.usageDAO(), metrics.getId()) : null);
-    return metrics;
   }
 
   @Override
@@ -64,18 +59,11 @@ public class MetricsRepository extends EntityRepository<Metrics> {
 
   @Override
   public void storeEntity(Metrics metrics, boolean update) throws IOException {
-    // Relationships and fields such as href are derived and not stored as part of json
-    EntityReference owner = metrics.getOwner();
-    List<TagLabel> tags = metrics.getTags();
+    // Relationships and fields such as service are derived and not stored as part of json
     EntityReference service = metrics.getService();
-
-    // Don't store owner, database, href and tags as JSON. Build it on the fly based on relationships
-    metrics.withOwner(null).withService(null).withHref(null).withTags(null);
-
+    metrics.withService(null);
     store(metrics, update);
-
-    // Restore the relationships
-    metrics.withOwner(owner).withService(service).withTags(tags);
+    metrics.withService(service);
   }
 
   @Override

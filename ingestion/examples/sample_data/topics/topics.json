@@ -75,7 +75,7 @@
 			"maximumMessageSize":249,
 			"cleanupPolicies": ["compact","delete"],
 			"schemaType": "Avro",
-			"schemaText": "{\"namespace\":\"openmetadata.kafka\",\"name\":\"level\",\"type\":\"record\",\"fields\":[{\"name\":\"uid\",\"type\":\"int\"},{\"name\":\"somefield\",\"type\":\"string\"},{\"name\":\"options\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"lvl2_record\",\"fields\":[{\"name\":\"item1_lvl2\",\"type\":\"string\"},{\"name\":\"item2_lvl2\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"lvl3_record\",\"fields\":[{\"name\":\"item1_lvl3\",\"type\":\"string\"},{\"name\":\"item2_lvl3\",\"type\":\"string\"}]}}}]}}}]}"
+			"schemaText": "{\n    \"namespace\": \"openmetadata.kafka\",\n    \"name\": \"level\",\n    \"type\": \"record\",\n    \"doc\": \"This is a first level record\",\n    \"fields\": [\n        {\n            \"name\": \"uid\",\n            \"type\": \"int\",\n            \"doc\": \"The field represents unique id\"\n        },\n        {\n            \"name\": \"somefield\",\n            \"type\": \"string\"\n        },\n        {\n            \"name\": \"options\",\n            \"doc\": \"The field represents options array\",\n            \"type\": {\n                \"type\": \"array\",\n                \"items\": {\n                    \"type\": \"record\",\n                    \"name\": \"lvl2_record\",\n                    \"doc\": \"The field represents a level 2 record\",\n                    \"fields\": [\n                        {\n                            \"name\": \"item1_lvl2\",\n                            \"type\": \"string\"\n                        },\n                        {\n                            \"name\": \"item2_lvl2\",\n                            \"type\": {\n                                \"type\": \"array\",\n                                \"items\": {\n                                    \"type\": \"record\",\n                                    \"name\": \"lvl3_record\",\n                                    \"fields\": [\n                                        {\n                                            \"name\": \"item1_lvl3\",\n                                            \"type\": \"string\",\n                                            \"doc\": \"The field represents level3 item\"\n                                        },\n                                        {\n                                            \"name\": \"item2_lvl3\",\n                                            \"type\": \"string\"\n                                        }\n                                    ]\n                                }\n                            }\n                        }\n                    ]\n                }\n            }\n        }\n    ]\n}"
 		},
 		{
 			"name": "json_schema_record",
@@ -98,6 +98,15 @@
 			"cleanupPolicies": ["compact","delete"],
 			"schemaType": "Protobuf",
 			"schemaText": "syntax = \"proto2\";\n\npackage tutorial;\n\nmessage Person {\n  optional string name = 1;\n  optional int32 id = 2;\n  optional string email = 3;\n\n  enum PhoneType {\n    MOBILE = 0;\n    HOME = 1;\n    WORK = 2;\n  }\n\n  message PhoneNumber {\n    optional string number = 1;\n    optional PhoneType type = 2 [default = HOME];\n  }\n\n  repeated PhoneNumber phones = 4;\n}\n\nmessage AddressBook {\n  repeated Person people = 1;\n}"
+		},
+		{
+			"name": "customer_contacts",
+			"description": "Kafka topic to capture the customer contacts such as email, phone",
+			"partitions": 56,
+			"retentionSize": 455858109,
+			"replicationFactor":2,
+			"maximumMessageSize":167,
+			"cleanupPolicies": ["delete"]
 		}
 	]
 }

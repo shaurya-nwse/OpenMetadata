@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,29 +11,32 @@
  *  limitations under the License.
  */
 
-import { Button, Row, Space, Table, Tooltip } from 'antd';
+import Icon from '@ant-design/icons';
+import { Button, Row, Space, Table, Tooltip, Typography } from 'antd';
 import { ColumnsType } from 'antd/lib/table';
 import { isEmpty, isUndefined } from 'lodash';
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { ReactComponent as ArrowDown } from '../../../assets/svg/arrow-down.svg';
-import { ReactComponent as ArrowRight } from '../../../assets/svg/arrow-right.svg';
-import { useAuthContext } from '../../../authentication/auth-provider/AuthProvider';
+import { getEntityName } from 'utils/EntityUtils';
+import { ReactComponent as IconDelete } from '../../../assets/svg/ic-delete.svg';
+import { ReactComponent as IconEdit } from '../../../assets/svg/ic-edit.svg';
+
 import { getTableTabPath } from '../../../constants/constants';
 import { NO_PERMISSION_FOR_ACTION } from '../../../constants/HelperTextUtil';
 import { TestCase, TestCaseResult } from '../../../generated/tests/testCase';
 import { useAuth } from '../../../hooks/authHooks';
-import { getEntityName, getNameFromFQN } from '../../../utils/CommonUtils';
+import { getNameFromFQN } from '../../../utils/CommonUtils';
 import { getTestSuitePath } from '../../../utils/RouterUtils';
 import { getDecodedFqn } from '../../../utils/StringsUtils';
-import SVGIcons, { Icons } from '../../../utils/SvgUtils';
 import {
   getEntityFqnFromEntityLink,
+  getTableExpandableConfig,
   getTestResultBadgeIcon,
 } from '../../../utils/TableUtils';
 import { getFormattedDateFromSeconds } from '../../../utils/TimeUtils';
 import EditTestCaseModal from '../../AddDataQualityTest/EditTestCaseModal';
+import { useAuthContext } from '../../authentication/auth-provider/AuthProvider';
 import DeleteWidgetModal from '../../common/DeleteWidget/DeleteWidgetModal';
 import Loader from '../../Loader/Loader';
 import { DataQualityTabProps } from '../profilerDashboard.interface';
@@ -53,22 +56,25 @@ const DataQualityTab: React.FC<DataQualityTabProps> = ({
 
   const hasAccess = isAdminUser || isAuthDisabled;
 
-  const columns: ColumnsType<TestCase> = useMemo(() => {
-    return [
+  const columns: ColumnsType<TestCase> = useMemo(
+    () => [
       {
         title: t('label.last-run-result'),
         dataIndex: 'testCaseResult',
         key: 'testCaseResult',
+        width: 130,
         render: (result: TestCaseResult) => (
           <Space size={8}>
             {result?.testCaseStatus && (
-              <SVGIcons
+              <Icon
                 alt="result"
-                className="w-4"
-                icon={getTestResultBadgeIcon(result.testCaseStatus)}
+                component={getTestResultBadgeIcon(result.testCaseStatus)}
+                style={{ fontSize: '16px' }}
               />
             )}
-            <span>{result?.testCaseStatus || '--'}</span>
+            <Typography.Text data-testid="test-case-status">
+              {result?.testCaseStatus || '--'}
+            </Typography.Text>
           </Space>
         ),
       },
@@ -76,6 +82,7 @@ const DataQualityTab: React.FC<DataQualityTabProps> = ({
         title: t('label.last-run'),
         dataIndex: 'testCaseResult',
         key: 'lastRun',
+        width: 120,
         render: (result: TestCaseResult) =>
           result?.timestamp
             ? getFormattedDateFromSeconds(result.timestamp)
@@ -85,12 +92,18 @@ const DataQualityTab: React.FC<DataQualityTabProps> = ({
         title: t('label.name'),
         dataIndex: 'name',
         key: 'name',
-        render: (name: string) => <span data-testid={name}>{name}</span>,
+        width: 320,
+        render: (name: string, record) => (
+          <Typography.Text className="break-word" data-testid={name}>
+            {getEntityName(record)}
+          </Typography.Text>
+        ),
       },
       {
         title: t('label.description'),
         dataIndex: 'description',
         key: 'description',
+        width: 350,
         render: (text) => (isEmpty(text) ? '--' : text),
       },
       {
@@ -100,6 +113,7 @@ const DataQualityTab: React.FC<DataQualityTabProps> = ({
         render: (value) => {
           return (
             <Link
+              data-testid="test-suite-link"
               to={getTestSuitePath(value?.fullyQualifiedName || '')}
               onClick={(e) => e.stopPropagation()}>
               {getEntityName(value)}
@@ -117,6 +131,7 @@ const DataQualityTab: React.FC<DataQualityTabProps> = ({
 
           return (
             <Link
+              data-testid="table-link"
               to={getTableTabPath(tableFqn, 'profiler')}
               onClick={(e) => e.stopPropagation()}>
               {name}
@@ -146,29 +161,25 @@ const DataQualityTab: React.FC<DataQualityTabProps> = ({
         },
       },
       {
-        title: t('label.actions'),
+        title: t('label.action-plural'),
         dataIndex: 'actions',
         key: 'actions',
         width: 100,
+        fixed: 'right',
         render: (_, record) => {
           return (
             <Row align="middle">
               {!deletedTable && (
                 <Tooltip
                   placement="bottomRight"
-                  title={hasAccess ? 'Edit' : NO_PERMISSION_FOR_ACTION}>
+                  title={
+                    hasAccess ? t('label.edit') : NO_PERMISSION_FOR_ACTION
+                  }>
                   <Button
                     className="flex-center"
                     data-testid={`edit-${record.name}`}
                     disabled={!hasAccess}
-                    icon={
-                      <SVGIcons
-                        alt="edit"
-                        className="h-4"
-                        icon={Icons.EDIT}
-                        title="Edit"
-                      />
-                    }
+                    icon={<IconEdit width={16} />}
                     type="text"
                     onClick={(e) => {
                       // preventing expand/collapse on click of edit button
@@ -187,13 +198,7 @@ const DataQualityTab: React.FC<DataQualityTabProps> = ({
                   className="flex-center"
                   data-testid={`delete-${record.name}`}
                   disabled={!hasAccess}
-                  icon={
-                    <SVGIcons
-                      alt={t('label.delete')}
-                      className="h-4"
-                      icon={Icons.DELETE}
-                    />
-                  }
+                  icon={<IconDelete width={16} />}
                   type="text"
                   onClick={(e) => {
                     // preventing expand/collapse on click of delete button
@@ -206,8 +211,9 @@ const DataQualityTab: React.FC<DataQualityTabProps> = ({
           );
         },
       },
-    ];
-  }, [hasAccess, deletedTable]);
+    ],
+    [hasAccess, deletedTable]
+  );
 
   return (
     <>
@@ -215,33 +221,13 @@ const DataQualityTab: React.FC<DataQualityTabProps> = ({
         bordered
         className="table-shadow"
         columns={columns}
+        data-testid="data-quality-table"
         dataSource={testCases.map((test) => ({ ...test, key: test.name }))}
         expandable={{
+          ...getTableExpandableConfig<TestCase>(),
           expandRowByClick: true,
           rowExpandable: () => true,
           expandedRowRender: (recode) => <TestSummary data={recode} />,
-          expandIcon: ({ expanded, onExpand, record }) =>
-            expanded ? (
-              <ArrowDown
-                className="mx-auto"
-                onClick={(e: React.MouseEvent) =>
-                  onExpand(
-                    record,
-                    e as React.MouseEvent<HTMLElement, MouseEvent>
-                  )
-                }
-              />
-            ) : (
-              <ArrowRight
-                className="mx-auto"
-                onClick={(e: React.MouseEvent) =>
-                  onExpand(
-                    record,
-                    e as React.MouseEvent<HTMLElement, MouseEvent>
-                  )
-                }
-              />
-            ),
         }}
         loading={{
           indicator: <Loader size="small" />,
@@ -249,6 +235,7 @@ const DataQualityTab: React.FC<DataQualityTabProps> = ({
         }}
         pagination={false}
         rowKey="id"
+        scroll={{ x: 1600 }}
         size="small"
       />
       <EditTestCaseModal

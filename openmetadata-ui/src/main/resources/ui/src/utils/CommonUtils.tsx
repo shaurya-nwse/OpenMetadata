@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,11 +11,18 @@
  *  limitations under the License.
  */
 
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { Popover, Space, Tag, Typography } from 'antd';
-import { ColumnsType } from 'antd/lib/table';
+/* eslint-disable @typescript-eslint/ban-types */
+
+import { CheckOutlined } from '@ant-design/icons';
+import { Typography } from 'antd';
 import { AxiosError } from 'axios';
 import classNames from 'classnames';
+import {
+  getDayCron,
+  getHourCron,
+} from 'components/common/CronEditor/CronEditor.constant';
+import ErrorPlaceHolder from 'components/common/error-with-placeholder/ErrorPlaceHolder';
+import Loader from 'components/Loader/Loader';
 import { t } from 'i18next';
 import {
   capitalize,
@@ -24,11 +31,10 @@ import {
   isNull,
   isString,
   isUndefined,
-  uniqueId,
+  toNumber,
 } from 'lodash';
 import {
   CurrentState,
-  EntityFieldThreadCount,
   ExtraInfo,
   FormattedTableData,
   RecentlySearched,
@@ -38,16 +44,10 @@ import {
 } from 'Models';
 import React from 'react';
 import { Trans } from 'react-i18next';
-import { Link } from 'react-router-dom';
 import { reactLocalStorage } from 'reactjs-localstorage';
+import { getFeedCount } from 'rest/feedsAPI';
 import AppState from '../AppState';
-import { getFeedCount } from '../axiosAPIs/feedsAPI';
-import {
-  getDayCron,
-  getHourCron,
-} from '../components/common/CronEditor/CronEditor.constant';
-import ErrorPlaceHolder from '../components/common/error-with-placeholder/ErrorPlaceHolder';
-import Loader from '../components/Loader/Loader';
+import { AddIngestionState } from '../components/AddIngestion/addIngestion.interface';
 import { FQN_SEPARATOR_CHAR } from '../constants/char.constants';
 import {
   getTeamAndUserDetailsPath,
@@ -63,46 +63,27 @@ import {
 import { SIZE } from '../enums/common.enum';
 import { EntityType, FqnPart, TabSpecificField } from '../enums/entity.enum';
 import { FilterPatternEnum } from '../enums/filterPattern.enum';
-import { Field } from '../generated/api/data/createTopic';
-import { Kpi } from '../generated/dataInsight/kpi/kpi';
-import { Bot } from '../generated/entity/bot';
-import { Dashboard } from '../generated/entity/data/dashboard';
-import { Database } from '../generated/entity/data/database';
-import { GlossaryTerm } from '../generated/entity/data/glossaryTerm';
-import { Pipeline } from '../generated/entity/data/pipeline';
-import { Table } from '../generated/entity/data/table';
-import { Topic } from '../generated/entity/data/topic';
-import { Webhook } from '../generated/entity/events/webhook';
 import { ThreadTaskStatus, ThreadType } from '../generated/entity/feed/thread';
-import { Policy } from '../generated/entity/policies/policy';
 import { PipelineType } from '../generated/entity/services/ingestionPipelines/ingestionPipeline';
-import { TagCategory } from '../generated/entity/tags/tagCategory';
-import { Role } from '../generated/entity/teams/role';
-import { Team } from '../generated/entity/teams/team';
-import { EntityReference, User } from '../generated/entity/teams/user';
+import { EntityReference } from '../generated/entity/teams/user';
 import { Paging } from '../generated/type/paging';
 import { TagLabel } from '../generated/type/tagLabel';
-import { ServicesType } from '../interface/service.interface';
+import { EntityFieldThreadCount } from '../interface/feed.interface';
 import jsonData from '../jsons/en';
 import { getEntityFeedLink, getTitleCase } from './EntityUtils';
 import Fqn from './Fqn';
-import { LIST_CAP } from './PermissionsUtils';
-import { getRoleWithFqnPath, getTeamsWithFqnPath } from './RouterUtils';
 import { serviceTypeLogo } from './ServiceUtils';
 import { getTierFromSearchTableTags } from './TableUtils';
 import { TASK_ENTITIES } from './TasksUtils';
 import { showErrorToast } from './ToastUtils';
 
-export const arraySorterByKey = (
-  key: string,
+export const arraySorterByKey = <T extends object>(
+  key: keyof T,
   sortDescending = false
-): Function => {
+) => {
   const sortOrder = sortDescending ? -1 : 1;
 
-  return (
-    elementOne: { [x: string]: number | string },
-    elementTwo: { [x: string]: number | string }
-  ) => {
+  return (elementOne: T, elementTwo: T) => {
     return (
       (elementOne[key] < elementTwo[key]
         ? -1
@@ -298,14 +279,9 @@ export const addToRecentSearched = (searchTerm: string): void => {
     let arrSearchedData: RecentlySearched['data'] = [];
     if (recentlySearch?.data) {
       const arrData = recentlySearch.data
-        // search term is not case-insensetive.
+        // search term is not case-insensitive.
         .filter((item) => item.term !== searchData.term)
-        .sort(
-          arraySorterByKey('timestamp', true) as (
-            a: RecentlySearchedData,
-            b: RecentlySearchedData
-          ) => number
-        );
+        .sort(arraySorterByKey<RecentlySearchedData>('timestamp', true));
       arrData.unshift(searchData);
 
       if (arrData.length > 5) {
@@ -339,12 +315,7 @@ export const addToRecentViewed = (eData: RecentlyViewedData): void => {
   if (recentlyViewed?.data) {
     const arrData = recentlyViewed.data
       .filter((item) => item.fqn !== entityData.fqn)
-      .sort(
-        arraySorterByKey('timestamp', true) as (
-          a: RecentlyViewedData,
-          b: RecentlyViewedData
-        ) => number
-      );
+      .sort(arraySorterByKey<RecentlyViewedData>('timestamp', true));
     arrData.unshift(entityData);
 
     if (arrData.length > 5) {
@@ -467,13 +438,31 @@ export const getFields = (defaultFields: string, tabSpecificField: string) => {
 export const getEntityMissingError = (entityType: string, fqn: string) => {
   return (
     <p>
-      {capitalize(entityType)} instance for <strong>{fqn}</strong> not found
+      {capitalize(entityType)} {t('label.instance-lowercase')}{' '}
+      {t('label.for-lowercase')} <strong>{fqn}</strong>{' '}
+      {t('label.not-found-lowercase')}
     </p>
   );
 };
 
 export const getNameFromFQN = (fqn: string): string => {
-  const arr = fqn.split(FQN_SEPARATOR_CHAR);
+  let arr: string[] = [];
+
+  // Check for fqn containing name inside double quotes which can contain special characters such as '/', '.' etc.
+  // Example: sample_data.example_table."example.sample/fqn"
+
+  // Regular expression which matches pattern like '."some content"' at the end of string
+  // Example in string 'sample_data."example_table"."example.sample/fqn"',
+  // this regular expression  will match '."example.sample/fqn"'
+  const regexForQuoteInFQN = /(\."[^"]+")$/g;
+
+  if (regexForQuoteInFQN.test(fqn)) {
+    arr = fqn.split('"');
+
+    return arr[arr.length - 2];
+  }
+
+  arr = fqn.split(FQN_SEPARATOR_CHAR);
 
   return arr[arr.length - 1];
 };
@@ -544,49 +533,6 @@ export const getEntityPlaceHolder = (value: string, isDeleted?: boolean) => {
   }
 };
 
-/**
- * Take entity reference as input and return name for entity
- * @param entity - entity reference
- * @returns - entity name
- */
-export const getEntityName = (
-  entity?:
-    | EntityReference
-    | ServicesType
-    | User
-    | Topic
-    | Database
-    | Dashboard
-    | Table
-    | Pipeline
-    | Team
-    | Policy
-    | Role
-    | GlossaryTerm
-    | Webhook
-    | Bot
-    | Kpi
-    | TagCategory
-    | Field
-) => {
-  return entity?.displayName || entity?.name || '';
-};
-
-export const getEntityId = (
-  entity?:
-    | EntityReference
-    | ServicesType
-    | User
-    | Topic
-    | Database
-    | Dashboard
-    | Table
-    | Pipeline
-    | Team
-    | Policy
-    | Role
-) => entity?.id || '';
-
 export const getEntityDeleteMessage = (entity: string, dependents: string) => {
   if (dependents) {
     return t('message.permanently-delete-metadata-and-dependents', {
@@ -594,7 +540,7 @@ export const getEntityDeleteMessage = (entity: string, dependents: string) => {
       dependents,
     });
   } else {
-    return t('message.permanently-delete-metadata-and-dependents', {
+    return t('message.permanently-delete-metadata', {
       entityName: getTitleCase(entity),
     });
   }
@@ -694,6 +640,23 @@ export const formatNumberWithComma = (number: number) => {
   return new Intl.NumberFormat('en-US').format(number);
 };
 
+/**
+ * If the number is a time format, return the number, otherwise format the number with commas
+ * @param {number} number - The number to be formatted.
+ * @returns A function that takes a number and returns a string.
+ */
+export const getStatisticsDisplayValue = (
+  number: string | number | undefined
+) => {
+  const displayValue = toNumber(number);
+
+  if (isNaN(displayValue)) {
+    return number;
+  }
+
+  return formatNumberWithComma(displayValue);
+};
+
 export const formTwoDigitNmber = (number: number) => {
   return number.toLocaleString('en-US', {
     minimumIntegerDigits: 2,
@@ -733,118 +696,6 @@ export const getHostNameFromURL = (url: string) => {
   }
 };
 
-export const commonUserDetailColumns: ColumnsType<User> = [
-  {
-    title: t('label.username'),
-    dataIndex: 'username',
-    key: 'username',
-    render: (_, record) => (
-      <Link
-        className="hover:tw-underline tw-cursor-pointer"
-        data-testid={record.name}
-        to={getUserPath(record.fullyQualifiedName || record.name)}>
-        {getEntityName(record)}
-      </Link>
-    ),
-  },
-  {
-    title: t('label.teams'),
-    dataIndex: 'teams',
-    key: 'teams',
-    render: (_, record) => {
-      const listLength = record.teams?.length ?? 0;
-      const hasMore = listLength > LIST_CAP;
-
-      if (isUndefined(record.teams) || isEmpty(record.teams)) {
-        return <>No Team</>;
-      } else {
-        return (
-          <Space wrap data-testid="policy-link" size={4}>
-            {record.teams.slice(0, LIST_CAP).map((team) => (
-              <Link
-                className="hover:tw-underline tw-cursor-pointer"
-                key={uniqueId()}
-                to={getTeamsWithFqnPath(team.fullyQualifiedName ?? '')}>
-                {getEntityName(team)}
-              </Link>
-            ))}
-            {hasMore && (
-              <Popover
-                className="tw-cursor-pointer"
-                content={
-                  <Space wrap size={4}>
-                    {record.teams.slice(LIST_CAP).map((team) => (
-                      <Link
-                        className="hover:tw-underline tw-cursor-pointer"
-                        key={uniqueId()}
-                        to={getTeamsWithFqnPath(team.fullyQualifiedName ?? '')}>
-                        {getEntityName(team)}
-                      </Link>
-                    ))}
-                  </Space>
-                }
-                overlayClassName="tw-w-40 tw-text-center"
-                trigger="click">
-                <Tag className="tw-ml-1" data-testid="plus-more-count">{`+${
-                  listLength - LIST_CAP
-                } more`}</Tag>
-              </Popover>
-            )}
-          </Space>
-        );
-      }
-    },
-  },
-  {
-    title: t('label.roles'),
-    dataIndex: 'roles',
-    key: 'roles',
-    render: (_, record) => {
-      const listLength = record.roles?.length ?? 0;
-      const hasMore = listLength > LIST_CAP;
-
-      if (isUndefined(record.roles) || isEmpty(record.roles)) {
-        return <>No Role</>;
-      } else {
-        return (
-          <Space wrap data-testid="policy-link" size={4}>
-            {record.roles.slice(0, LIST_CAP).map((role) => (
-              <Link
-                className="hover:tw-underline tw-cursor-pointer"
-                key={uniqueId()}
-                to={getRoleWithFqnPath(role.fullyQualifiedName ?? '')}>
-                {getEntityName(role)}
-              </Link>
-            ))}
-            {hasMore && (
-              <Popover
-                className="tw-cursor-pointer"
-                content={
-                  <Space wrap size={4}>
-                    {record.roles.slice(LIST_CAP).map((role) => (
-                      <Link
-                        className="hover:tw-underline tw-cursor-pointer"
-                        key={uniqueId()}
-                        to={getRoleWithFqnPath(role.fullyQualifiedName ?? '')}>
-                        {getEntityName(role)}
-                      </Link>
-                    ))}
-                  </Space>
-                }
-                overlayClassName="tw-w-40 tw-text-center"
-                trigger="click">
-                <Tag className="tw-ml-1" data-testid="plus-more-count">{`+${
-                  listLength - LIST_CAP
-                } more`}</Tag>
-              </Popover>
-            )}
-          </Space>
-        );
-      }
-    },
-  },
-];
-
 export const getOwnerValue = (owner: EntityReference) => {
   switch (owner?.type) {
     case 'team':
@@ -876,7 +727,7 @@ export const getEmptyPlaceholder = () => {
   return (
     <ErrorPlaceHolder size={SIZE.MEDIUM}>
       <Typography.Paragraph>
-        {t('label.no-data-available')}
+        {t('message.no-data-available')}
       </Typography.Paragraph>
     </ErrorPlaceHolder>
   );
@@ -890,7 +741,7 @@ export const getLoadingStatus = (
 ) => {
   return current.id === id ? (
     current.state === 'success' ? (
-      <FontAwesomeIcon icon="check" />
+      <CheckOutlined />
     ) : (
       <Loader size="small" type="default" />
     )
@@ -903,6 +754,9 @@ export const refreshPage = () => window.location.reload();
 // return array of id as  strings
 export const getEntityIdArray = (entities: EntityReference[]): string[] =>
   entities.map((item) => item.id);
+
+export const getEntityFqnArray = (entities: EntityReference[]): string[] =>
+  entities.map((item) => item.fullyQualifiedName!);
 
 export const getTierFromEntityInfo = (entity: FormattedTableData) => {
   return (
@@ -963,7 +817,7 @@ export const Transi18next = ({
   ...otherProps
 }: {
   i18nKey: string;
-  values?: {};
+  values?: object;
   renderElement: JSX.Element | HTMLElement;
 }): JSX.Element => (
   <Trans i18nKey={i18nKey} values={values} {...otherProps}>
@@ -1000,3 +854,50 @@ export const getFilterPatternDocsLinks = (type: FilterPatternEnum) => {
       return 'https://docs.open-metadata.org/connectors/ingestion/workflows/metadata/filter-patterns';
   }
 };
+
+/**
+ * It takes a string and returns a string
+ * @param {FilterPatternEnum} type - FilterPatternEnum
+ * @returns A function that takes in a type and returns a keyof AddIngestionState
+ */
+export const getFilterTypes = (
+  type: FilterPatternEnum
+): keyof AddIngestionState => {
+  switch (type) {
+    case FilterPatternEnum.CHART:
+      return 'chartFilterPattern' as keyof AddIngestionState;
+    case FilterPatternEnum.DASHBOARD:
+      return 'dashboardFilterPattern' as keyof AddIngestionState;
+    case FilterPatternEnum.DATABASE:
+      return 'databaseFilterPattern' as keyof AddIngestionState;
+    case FilterPatternEnum.MLMODEL:
+      return 'mlModelFilterPattern' as keyof AddIngestionState;
+    case FilterPatternEnum.PIPELINE:
+      return 'pipelineFilterPattern' as keyof AddIngestionState;
+    case FilterPatternEnum.SCHEMA:
+      return 'schemaFilterPattern' as keyof AddIngestionState;
+    case FilterPatternEnum.TABLE:
+      return 'tableFilterPattern' as keyof AddIngestionState;
+    default:
+      return 'topicFilterPattern' as keyof AddIngestionState;
+  }
+};
+
+/**
+ * It takes a state and an action, and returns a new state with the action merged into it
+ * @param {S} state - S - The current state of the reducer.
+ * @param {A} action - A - The action that was dispatched.
+ * @returns An object with the state and action properties.
+ */
+export const reducerWithoutAction = <S, A>(state: S, action: A) => {
+  return {
+    ...state,
+    ...action,
+  };
+};
+
+/**
+ * @param text plain text
+ * @returns base64 encoded text
+ */
+export const getBase64EncodedString = (text: string): string => btoa(text);

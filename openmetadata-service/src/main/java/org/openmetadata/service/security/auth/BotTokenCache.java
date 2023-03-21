@@ -29,7 +29,7 @@ public class BotTokenCache {
 
   public BotTokenCache() {
     BOTS_TOKEN_CACHE =
-        CacheBuilder.newBuilder().maximumSize(1000).expireAfterAccess(15, TimeUnit.MINUTES).build(new BotTokenLoader());
+        CacheBuilder.newBuilder().maximumSize(1000).expireAfterWrite(2, TimeUnit.MINUTES).build(new BotTokenLoader());
   }
 
   public String getToken(String botName) {
@@ -61,7 +61,7 @@ public class BotTokenCache {
   static class BotTokenLoader extends CacheLoader<String, String> {
     @Override
     public String load(@CheckForNull String botName) throws IOException {
-      UserRepository userRepository = UserRepository.class.cast(Entity.getEntityRepository(Entity.USER));
+      UserRepository userRepository = (UserRepository) Entity.getEntityRepository(Entity.USER);
       User user =
           userRepository.getByName(
               null, botName, new EntityUtil.Fields(List.of(UserResource.USER_PROTECTED_FIELDS)), NON_DELETED);

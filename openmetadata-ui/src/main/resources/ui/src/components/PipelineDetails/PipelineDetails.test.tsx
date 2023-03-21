@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -19,7 +19,8 @@ import {
   render,
   screen,
 } from '@testing-library/react';
-import { LeafNodes, LoadingNodeState } from 'Models';
+import userEvent from '@testing-library/user-event';
+
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { act } from 'react-test-renderer';
@@ -28,6 +29,10 @@ import { EntityLineage } from '../../generated/type/entityLineage';
 import { EntityReference } from '../../generated/type/entityReference';
 import { Paging } from '../../generated/type/paging';
 import { TagLabel } from '../../generated/type/tagLabel';
+import {
+  LeafNodes,
+  LoadingNodeState,
+} from '../EntityLineage/EntityLineage.interface';
 import PipelineDetails from './PipelineDetails.component';
 
 /**
@@ -38,18 +43,6 @@ window.ResizeObserver = jest.fn().mockImplementation(() => ({
   unobserve: jest.fn(),
   disconnect: jest.fn(),
 }));
-
-jest.mock('../../authentication/auth-provider/AuthProvider', () => {
-  return {
-    useAuthContext: jest.fn(() => ({
-      isAuthDisabled: false,
-      isAuthenticated: true,
-      isProtectedRoute: jest.fn().mockReturnValue(true),
-      isTourRoute: jest.fn().mockReturnValue(false),
-      onLogoutHandler: jest.fn(),
-    })),
-  };
-});
 
 const mockUserTeam = [
   {
@@ -89,12 +82,24 @@ const mockTasks = [
   },
 ];
 
+const mockTags = [
+  {
+    tagFQN: 'PII.Sensitive',
+    source: 'Tag',
+  },
+  {
+    tagFQN: 'PersonalData.Personal',
+    source: 'Tag',
+  },
+];
+
+const mockTaskUpdateHandler = jest.fn();
+
 const PipelineDetailsProps = {
   pipelineUrl: '',
-  tasks: mockTasks,
   serviceType: '',
   users: [],
-  pipelineDetails: {} as Pipeline,
+  pipelineDetails: { tasks: mockTasks } as Pipeline,
   entityLineage: {} as EntityLineage,
   entityName: '',
   activeTab: 1,
@@ -104,7 +109,7 @@ const PipelineDetailsProps = {
   followers: [],
   pipelineTags: [],
   slashedPipelineName: [],
-  taskUpdateHandler: jest.fn(),
+  taskUpdateHandler: mockTaskUpdateHandler,
   setActiveTabHandler: jest.fn(),
   followPipelineHandler: jest.fn(),
   unfollowPipelineHandler: jest.fn(),
@@ -151,11 +156,11 @@ jest.mock('../common/rich-text-editor/RichTextEditorPreviewer', () => {
   return jest.fn().mockReturnValue(<p>RichTextEditorPreviwer</p>);
 });
 
-jest.mock('../tags-container/tags-container', () => {
+jest.mock('components/Tag/TagsContainer/tags-container', () => {
   return jest.fn().mockReturnValue(<p>Tag Container</p>);
 });
 
-jest.mock('../tags/tags', () => {
+jest.mock('components/Tag/Tags/tags', () => {
   return jest.fn().mockReturnValue(<p>Tags</p>);
 });
 
@@ -206,6 +211,18 @@ jest.mock('../Execution/Execution.component', () => {
   return jest.fn().mockImplementation(() => <p>Executions</p>);
 });
 
+jest.mock('../Tag/TagsContainer/tags-container', () =>
+  jest.fn().mockImplementation(({ onSelectionChange }) => (
+    <div data-testid="tags-container">
+      <div
+        data-testid="onSelectionChange"
+        onClick={() => onSelectionChange(mockTags)}>
+        onSelectionChange
+      </div>
+    </div>
+  ))
+);
+
 describe('Test PipelineDetails component', () => {
   it('Checks if the PipelineDetails component has all the proper components rendered', async () => {
     const { container } = render(
@@ -216,16 +233,16 @@ describe('Test PipelineDetails component', () => {
     );
     const EntityPageInfo = await findByText(container, /EntityPageInfo/i);
     const description = await findByText(container, /Description Component/i);
-    const tasksTab = await findByText(container, 'label.tasks');
+    const tasksTab = await findByText(container, 'label.task-plural');
     const activityFeedTab = await findByText(
       container,
       'label.activity-feed-and-task-plural'
     );
     const lineageTab = await findByText(container, 'label.lineage');
-    const executionsTab = await findByText(container, 'label.executions');
+    const executionsTab = await findByText(container, 'label.execution-plural');
     const customPropertiesTab = await findByText(
       container,
-      'label.custom-properties'
+      'label.custom-property-plural'
     );
 
     expect(EntityPageInfo).toBeInTheDocument();
@@ -241,15 +258,21 @@ describe('Test PipelineDetails component', () => {
     render(<PipelineDetails {...PipelineDetailsProps} />, {
       wrapper: MemoryRouter,
     });
-    const taskDetail = await screen.findByText('label.tasks');
+    const taskDetail = await screen.findByText('label.task-plural');
 
     expect(taskDetail).toBeInTheDocument();
   });
 
   it('Should render no tasks data placeholder is tasks list is empty', async () => {
-    render(<PipelineDetails {...PipelineDetailsProps} tasks={[]} />, {
-      wrapper: MemoryRouter,
-    });
+    render(
+      <PipelineDetails
+        {...PipelineDetailsProps}
+        pipelineDetails={{} as Pipeline}
+      />,
+      {
+        wrapper: MemoryRouter,
+      }
+    );
 
     const switchContainer = screen.getByTestId('pipeline-task-switch');
 
@@ -292,7 +315,10 @@ describe('Test PipelineDetails component', () => {
       }
     );
 
-    const activityFeedTab = await findByText(container, 'label.executions');
+    const activityFeedTab = await findByText(
+      container,
+      'label.execution-plural'
+    );
 
     await act(async () => {
       fireEvent.click(activityFeedTab);
@@ -329,7 +355,7 @@ describe('Test PipelineDetails component', () => {
 
     const activityFeedTab = await findByText(
       container,
-      'label.custom-properties'
+      'label.custom-property-plural'
     );
 
     await act(async () => {
@@ -363,5 +389,23 @@ describe('Test PipelineDetails component', () => {
     const obServerElement = await findByTestId(container, 'observer-element');
 
     expect(obServerElement).toBeInTheDocument();
+  });
+
+  it('taskUpdateHandler should be called after the tags are added or removed to a task', async () => {
+    render(<PipelineDetails {...PipelineDetailsProps} />, {
+      wrapper: MemoryRouter,
+    });
+
+    const tagsContainer = screen.getAllByTestId('tags-container');
+
+    expect(tagsContainer).toHaveLength(2);
+
+    const onSelectionChange = screen.getAllByTestId('onSelectionChange');
+
+    expect(onSelectionChange).toHaveLength(2);
+
+    await act(async () => userEvent.click(onSelectionChange[0]));
+
+    expect(mockTaskUpdateHandler).toHaveBeenCalledTimes(1);
   });
 });

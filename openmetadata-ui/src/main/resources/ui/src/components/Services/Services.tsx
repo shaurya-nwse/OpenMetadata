@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,35 +11,37 @@
  *  limitations under the License.
  */
 
-import { Button as ButtonAntd, Card, Col, Row, Tooltip } from 'antd';
+import { Button, Card, Col, Row, Space, Tooltip } from 'antd';
+import { ERROR_PLACEHOLDER_TYPE } from 'enums/common.enum';
 import { isEmpty } from 'lodash';
-import React, { Fragment, useMemo } from 'react';
+import React, { Fragment, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useHistory } from 'react-router-dom';
-import { useAuthContext } from '../../authentication/auth-provider/AuthProvider';
-import { getServiceDetailsPath, PAGE_SIZE } from '../../constants/constants';
+import { getEntityName } from 'utils/EntityUtils';
+import {
+  getServiceDetailsPath,
+  SERVICE_VIEW_CAP,
+} from '../../constants/constants';
 import { CONNECTORS_DOCS } from '../../constants/docs.constants';
 import { NO_PERMISSION_FOR_ACTION } from '../../constants/HelperTextUtil';
+import { PAGE_HEADERS } from '../../constants/PageHeaders.constant';
 import { servicesDisplayName } from '../../constants/Services.constant';
 import { ServiceCategory } from '../../enums/service.enum';
 import { Operation } from '../../generated/entity/policies/policy';
 import { Paging } from '../../generated/type/paging';
 import { ServicesType } from '../../interface/service.interface';
-import {
-  getEntityName,
-  getServiceLogo,
-  showPagination,
-} from '../../utils/CommonUtils';
+import { getServiceLogo, showPagination } from '../../utils/CommonUtils';
 import { checkPermission } from '../../utils/PermissionsUtils';
 import { getAddServicePath } from '../../utils/RouterUtils';
 import {
   getOptionalFields,
   getResourceEntityFromServiceCategory,
 } from '../../utils/ServiceUtils';
-import { Button } from '../buttons/Button/Button';
+import { useAuthContext } from '../authentication/auth-provider/AuthProvider';
 import ErrorPlaceHolder from '../common/error-with-placeholder/ErrorPlaceHolder';
 import NextPrevious from '../common/next-previous/NextPrevious';
 import RichTextEditorPreviewer from '../common/rich-text-editor/RichTextEditorPreviewer';
-import { leftPanelAntCardStyle } from '../containers/PageLayout';
+import PageHeader from '../header/PageHeader.component';
 import { usePermissionProvider } from '../PermissionProvider/PermissionProvider';
 
 interface ServicesProps {
@@ -57,6 +59,7 @@ const Services = ({
   currentPage,
   onPageChange,
 }: ServicesProps) => {
+  const { t } = useTranslation();
   const { isAuthDisabled } = useAuthContext();
   const history = useHistory();
   const handleAddServiceClick = () => {
@@ -76,39 +79,64 @@ const Services = ({
     [permissions, serviceName]
   );
 
+  const getServicePageHeader = useCallback(() => {
+    switch (serviceName) {
+      case ServiceCategory.DATABASE_SERVICES:
+        return PAGE_HEADERS.DATABASES_SERVICES;
+      case ServiceCategory.DASHBOARD_SERVICES:
+        return PAGE_HEADERS.DASHBOARD_SERVICES;
+      case ServiceCategory.MESSAGING_SERVICES:
+        return PAGE_HEADERS.MESSAGING_SERVICES;
+      case ServiceCategory.METADATA_SERVICES:
+        return PAGE_HEADERS.METADATA_SERVICES;
+      case ServiceCategory.ML_MODEL_SERVICES:
+        return PAGE_HEADERS.ML_MODELS_SERVICES;
+      case ServiceCategory.PIPELINE_SERVICES:
+        return PAGE_HEADERS.PIPELINES_SERVICES;
+      case ServiceCategory.OBJECT_STORE_SERVICES:
+        return PAGE_HEADERS.OBJECT_STORE_SERVICES;
+      default:
+        return PAGE_HEADERS.DATABASES_SERVICES;
+    }
+  }, [serviceName]);
+
   return (
     <Row className="tw-justify-center" data-testid="services-container">
       {serviceData.length ? (
         <Fragment>
           <Col span={24}>
-            <div className="tw-flex tw-justify-end" data-testid="header">
+            <Space
+              className="w-full justify-between m-b-lg"
+              data-testid="header">
+              <PageHeader data={getServicePageHeader()} />
               <Tooltip
                 placement="left"
                 title={
                   addServicePermission
-                    ? 'Add Service'
+                    ? t('label.add-entity', {
+                        entity: t('label.service'),
+                      })
                     : NO_PERMISSION_FOR_ACTION
                 }>
                 <Button
-                  className="tw-h-8 tw-rounded tw-mb-2"
+                  className="m-b-xs"
                   data-testid="add-service-button"
                   disabled={!addServicePermission && !isAuthDisabled}
-                  size="small"
-                  theme="primary"
-                  variant="contained"
+                  size="middle"
+                  type="primary"
                   onClick={handleAddServiceClick}>
-                  Add New Service
+                  {t('label.add-new-entity', {
+                    entity: t('label.service'),
+                  })}
                 </Button>
               </Tooltip>
-            </div>
+            </Space>
           </Col>
           <Col span={24}>
             <Row data-testid="data-container" gutter={[16, 16]}>
               {serviceData.map((service, index) => (
                 <Col key={index} lg={8} xl={6}>
-                  <Card
-                    size="small"
-                    style={{ ...leftPanelAntCardStyle, height: '100%' }}>
+                  <Card className="w-full" size="small">
                     <div
                       className="tw-flex tw-justify-between tw-text-grey-muted"
                       data-testid="service-card">
@@ -140,14 +168,16 @@ const Services = ({
                               />
                             ) : (
                               <span className="tw-no-description">
-                                No description
+                                {t('label.no-description')}
                               </span>
                             )}
                           </div>
                           {getOptionalFields(service, serviceName)}
                         </div>
                         <div className="" data-testid="service-type">
-                          <label className="tw-mb-0">Type:</label>
+                          <label className="tw-mb-0">{`${t(
+                            'label.type'
+                          )}:`}</label>
                           <span className=" tw-ml-1 tw-font-normal tw-text-grey-body">
                             {service.serviceType}
                           </span>
@@ -170,7 +200,7 @@ const Services = ({
           {showPagination(paging) && (
             <NextPrevious
               currentPage={currentPage}
-              pageSize={PAGE_SIZE}
+              pageSize={SERVICE_VIEW_CAP}
               paging={paging}
               pagingHandler={onPageChange}
               totalCount={paging.total}
@@ -185,23 +215,28 @@ const Services = ({
                 placement="left"
                 title={
                   addServicePermission
-                    ? 'Add Service'
+                    ? t('label.add-entity', {
+                        entity: t('label.service'),
+                      })
                     : NO_PERMISSION_FOR_ACTION
                 }>
-                <ButtonAntd
+                <Button
                   ghost
                   data-testid="add-service-button"
                   disabled={!addServicePermission}
                   size="small"
                   type="primary"
                   onClick={handleAddServiceClick}>
-                  Add new {servicesDisplayName[serviceName]}
-                </ButtonAntd>
+                  {t('label.add-new-entity', {
+                    entity: servicesDisplayName[serviceName],
+                  })}
+                </Button>
               </Tooltip>
             }
+            classes="mt-24"
             doc={CONNECTORS_DOCS}
             heading={servicesDisplayName[serviceName]}
-            type="ADD_DATA"
+            type={ERROR_PLACEHOLDER_TYPE.ADD}
           />
         </Col>
       )}

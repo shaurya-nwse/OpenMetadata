@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,58 +11,53 @@
  *  limitations under the License.
  */
 
-@white: #ffffff;
-@summary-panel-offset: 118px; // (topnav height) 64px + (margin) 16px + (tabs height) 38px
-@label-color: #37352f99;
-@succesColor: #28a745;
+@import url('../../../styles/variables.less');
+@summary-panel-offset: 96px; // (topnav height) 64px + page padding top and bottom 32px
+@label-color: #6b7280;
+@successColor: #28a745;
 @failedColor: #cb2431;
 @abortedColor: #efae2f;
+@section-header-color: #6b7280;
 
 .summary-panel-container {
-  width: 380px;
-  display: none;
-  background-color: @white;
+  background-color: @background-color;
+  margin-right: -8px;
+  position: sticky;
   height: calc(100vh - @summary-panel-offset);
-}
-
-.show-panel {
-  display: block;
-  position: fixed;
-  top: @summary-panel-offset;
-  right: 0px;
-  z-index: 1000;
-  box-shadow: -2px 2px 4px rgba(0, 0, 0, 0.12);
+  top: 2px; // To show the border properly
+  z-index: 9;
+  box-shadow: @panels-shadow-color;
+  border: @global-border;
   font-size: 14px;
   overflow-y: scroll;
   -ms-overflow-style: none;
   scrollbar-width: none;
 
+  .ant-drawer-content-wrapper {
+    box-shadow: -2px 2px 4px rgba(0, 0, 0, 0.12);
+  }
+  .ant-drawer-body {
+    padding: unset;
+  }
+
   .summary-panel-statistics-count {
-    color: #37352f;
+    color: @text-color-secondary;
     font-size: 18px;
     line-height: 24px;
     font-weight: 700;
   }
 
-  .text-gray {
-    color: @label-color;
-  }
-
-  .section-header {
-    font-size: 16px;
-  }
-
   .success {
-    color: @succesColor;
+    color: @successColor;
   }
   .failed {
-    color: @failedColor;
+    color: @failed-color;
   }
   .aborted {
     color: @abortedColor;
   }
 
-  .column-name {
+  .entity-title {
     font-weight: 500;
   }
 
@@ -77,8 +72,18 @@
 
   .close-icon {
     position: absolute;
-    top: 16px;
-    right: 16px;
+    top: 12px;
+    right: 12px;
+  }
+
+  .summary-schema-editor {
+    margin: 16px 0px;
+    border: @global-border;
+    border-radius: 4px;
+  }
+
+  .link {
+    color: @primary-color;
   }
 }
 

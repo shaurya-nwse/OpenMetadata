@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,26 +11,21 @@
  *  limitations under the License.
  */
 
-import {
-  EntityFieldThreadCount,
-  LeafNodes,
-  LineagePos,
-  LoadingNodeState,
-} from 'Models';
 import { HTMLAttributes } from 'react';
 import { FeedFilter } from '../../enums/mydata.enum';
 import { CreateThread } from '../../generated/api/feed/createThread';
 import { Mlmodel } from '../../generated/entity/data/mlmodel';
 import { Thread, ThreadType } from '../../generated/entity/feed/thread';
-import { EntityLineage } from '../../generated/type/entityLineage';
-import { EntityReference } from '../../generated/type/entityReference';
 import { Paging } from '../../generated/type/paging';
-import { ThreadUpdatedFunc } from '../../interface/feed.interface';
-import { Edge, EdgeData } from '../EntityLineage/EntityLineage.interface';
+import {
+  EntityFieldThreadCount,
+  ThreadUpdatedFunc,
+} from '../../interface/feed.interface';
 
 export interface MlModelDetailProp extends HTMLAttributes<HTMLDivElement> {
   mlModelDetail: Mlmodel;
   activeTab: number;
+  version?: string;
   entityThread: Thread[];
   isEntityThreadLoading: boolean;
   paging: Paging;
@@ -42,16 +37,7 @@ export interface MlModelDetailProp extends HTMLAttributes<HTMLDivElement> {
   tagUpdateHandler: (updatedMlModel: Mlmodel) => void;
   updateMlModelFeatures: (updatedMlModel: Mlmodel) => Promise<void>;
   settingsUpdateHandler: (updatedMlModel: Mlmodel) => Promise<void>;
-  lineageTabData: {
-    loadNodeHandler: (node: EntityReference, pos: LineagePos) => void;
-    addLineageHandler: (edge: Edge) => Promise<void>;
-    removeLineageHandler: (data: EdgeData) => void;
-    entityLineageHandler: (lineage: EntityLineage) => void;
-    isLineageLoading?: boolean;
-    entityLineage: EntityLineage;
-    lineageLeafNodes: LeafNodes;
-    isNodeLoading: LoadingNodeState;
-  };
+  versionHandler: () => void;
   onExtensionUpdate: (updatedMlModel: Mlmodel) => Promise<void>;
   fetchFeedHandler: (
     after?: string,

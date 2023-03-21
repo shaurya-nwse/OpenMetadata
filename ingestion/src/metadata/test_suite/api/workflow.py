@@ -25,7 +25,6 @@ from pydantic import ValidationError
 from sqlalchemy import MetaData
 
 from metadata.config.common import WorkflowExecutionError
-from metadata.config.workflow import get_sink
 from metadata.generated.schema.api.tests.createTestCase import CreateTestCaseRequest
 from metadata.generated.schema.api.tests.createTestSuite import CreateTestSuiteRequest
 from metadata.generated.schema.entity.data.table import PartitionProfilerConfig, Table
@@ -46,21 +45,23 @@ from metadata.generated.schema.metadataIngestion.workflow import (
     OpenMetadataWorkflowConfig,
 )
 from metadata.generated.schema.tests.testCase import TestCase
-from metadata.generated.schema.tests.testDefinition import TestDefinition
 from metadata.generated.schema.tests.testSuite import TestSuite
+from metadata.generated.schema.type.basic import FullyQualifiedEntityName
 from metadata.ingestion.api.parser import parse_workflow_config_gracefully
 from metadata.ingestion.api.processor import ProcessorStatus
 from metadata.ingestion.ometa.client_utils import create_ometa_client
 from metadata.ingestion.ometa.ometa_api import OpenMetadata
-from metadata.ingestion.source.database.datalake import ometa_to_dataframe
+from metadata.ingestion.source.connections import get_connection
+from metadata.ingestion.source.database.datalake.metadata import ometa_to_dataframe
 from metadata.interfaces.datalake.datalake_test_suite_interface import (
     DataLakeTestSuiteInterface,
 )
 from metadata.interfaces.sqalchemy.sqa_test_suite_interface import SQATestSuiteInterface
+from metadata.profiler.api.models import ProfileSampleConfig
 from metadata.test_suite.api.models import TestCaseDefinition, TestSuiteProcessorConfig
 from metadata.test_suite.runner.core import DataTestsRunner
 from metadata.utils import entity_link
-from metadata.utils.connections import get_connection
+from metadata.utils.importer import get_sink
 from metadata.utils.logger import test_suite_logger
 from metadata.utils.partition import get_partition_details
 from metadata.utils.workflow_output_handler import print_test_suite_status
@@ -81,7 +82,6 @@ class TestSuiteWorkflow(WorkflowStatusMixin):
 
         Attributes:
             config: OM workflow configuration object
-            source_config: TestSuitePipeline object
         """
         self.config = config
 
@@ -107,7 +107,7 @@ class TestSuiteWorkflow(WorkflowStatusMixin):
                 sink_type=self.config.sink.type,
                 sink_config=self.config.sink,
                 metadata_config=self.metadata_config,
-                _from="test_suite",
+                from_="test_suite",
             )
 
     @classmethod
@@ -181,19 +181,19 @@ class TestSuiteWorkflow(WorkflowStatusMixin):
                     service_connection_config.catalog = entity_fqn.split(".")[1]
             return service_connection_config
 
-        logger.error(f"Could not retrive connection details for entity {entity_link}")
+        logger.error(f"Could not retrieve connection details for entity {entity_link}")
         raise ValueError()
 
     def _get_table_entity_from_test_case(self, entity_fqn: str):
         """given an entityLink return the table entity
 
         Args:
-            entity_link: entity link for the test case
+            entity_fqn: entity fqn for the test case
         """
         return self.metadata.get_by_name(
             entity=Table,
             fqn=entity_fqn,
-            fields=["profile"],
+            fields=["tableProfilerConfig"],
         )
 
     def _get_profile_sample(self, entity: Table) -> Optional[float]:
@@ -202,8 +202,16 @@ class TestSuiteWorkflow(WorkflowStatusMixin):
         Args:
             entity: table entity
         """
-        if entity.tableProfilerConfig:
-            return entity.tableProfilerConfig.profileSample
+        if (
+            hasattr(entity, "tableProfilerConfig")
+            and hasattr(entity.tableProfilerConfig, "profileSample")
+            and entity.tableProfilerConfig.profileSample
+        ):
+            return ProfileSampleConfig(
+                profile_sample=entity.tableProfilerConfig.profileSample,
+                profile_sample_type=entity.tableProfilerConfig.profileSampleType,
+            )
+
         return None
 
     def _get_profile_query(self, entity: Table) -> Optional[str]:
@@ -234,14 +242,14 @@ class TestSuiteWorkflow(WorkflowStatusMixin):
             entity_fqn
         )
         table_partition_config = None
-        table_sample_precentage = None
+        profile_sample_config = None
         table_sample_query = (
             self._get_profile_query(table_entity)
             if not self._get_profile_sample(table_entity)
             else None
         )
         if not table_sample_query:
-            table_sample_precentage = self._get_profile_sample(table_entity)
+            profile_sample_config = self._get_profile_sample(table_entity)
             table_partition_config = self._get_partition_details(table_entity)
 
         if not isinstance(service_connection_config, DatalakeConnection):
@@ -251,16 +259,17 @@ class TestSuiteWorkflow(WorkflowStatusMixin):
                 ometa_client=self.client,
                 sqa_metadata_obj=sqa_metadata_obj,
                 table_entity=table_entity,
-                table_sample_precentage=table_sample_precentage,
+                profile_sample_config=profile_sample_config,
                 table_sample_query=table_sample_query,
                 table_partition_config=table_partition_config,
             )
-        self.client = get_connection(service_connection_config).client
         return DataLakeTestSuiteInterface(
             service_connection_config=service_connection_config,
             ometa_client=self.client,
-            data_frame=ometa_to_dataframe(
-                service_connection_config.configSource, self.client, table_entity
+            df=ometa_to_dataframe(
+                service_connection_config.configSource,
+                get_connection(service_connection_config).client,
+                table_entity,
             )[0],
             table_entity=table_entity,
         )
@@ -288,8 +297,7 @@ class TestSuiteWorkflow(WorkflowStatusMixin):
         self,
     ) -> List[TestSuite]:
         """
-        Fro the CLI workflow we'll have n testSuite in the
-        processor.config.testSuites
+        For the CLI workflow we'll have n testSuite in the processor.config.testSuites
         """
         test_suite_entities = []
         test_suites = self.processor_config.testSuites or []
@@ -376,12 +384,11 @@ class TestSuiteWorkflow(WorkflowStatusMixin):
                         CreateTestCaseRequest(
                             name=test_case_to_create.name,
                             entityLink=test_case_to_create.entityLink,
-                            testDefinition=self.metadata.get_entity_reference(
-                                entity=TestDefinition,
-                                fqn=test_case_to_create.testDefinitionName,
+                            testDefinition=FullyQualifiedEntityName(
+                                __root__=test_case_to_create.testDefinitionName
                             ),
-                            testSuite=self.metadata.get_entity_reference(
-                                entity=TestSuite, fqn=test_suite.name
+                            testSuite=FullyQualifiedEntityName(
+                                __root__=test_suite.name
                             ),
                             parameterValues=list(test_case_to_create.parameterValues)
                             if test_case_to_create.parameterValues

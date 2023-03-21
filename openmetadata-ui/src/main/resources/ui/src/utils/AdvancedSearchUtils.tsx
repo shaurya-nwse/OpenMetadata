@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -13,6 +13,8 @@
 
 import Icon, { CloseCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Checkbox, MenuProps, Space, Typography } from 'antd';
+import { FormattedSuggestResponseObject } from 'components/Explore/ExploreQuickFilters.interface';
+import { SearchDropdownOption } from 'components/SearchDropdown/SearchDropdown.interface';
 import i18next from 'i18next';
 import { isArray, isUndefined } from 'lodash';
 import React from 'react';
@@ -25,8 +27,10 @@ import {
   TABLE_DROPDOWN_ITEMS,
 } from '../constants/AdvancedSearch.constants';
 
-import { AdvancedFields } from '../enums/AdvancedSearch.enum';
+import { AdvancedFields, EntityFields } from '../enums/AdvancedSearch.enum';
 import { SearchIndex } from '../enums/search.enum';
+import { Dashboard } from '../generated/entity/data/dashboard';
+import { Pipeline } from '../generated/entity/data/pipeline';
 import SVGIcons, { Icons } from './SvgUtils';
 
 export const getDropDownItems = (index: string) => {
@@ -70,10 +74,10 @@ export const getAdvancedField = (field: string) => {
     case 'database.name':
       return AdvancedFields.DATABASE;
 
-    case 'charts.displayName':
+    case 'charts.name':
       return AdvancedFields.CHART;
 
-    case 'tasks.displayName':
+    case 'tasks.name':
       return AdvancedFields.TASK;
 
     case 'service.name':
@@ -124,7 +128,9 @@ export const renderAdvanceSearchButtons: RenderSettings['renderButton'] = (
   } else if (type === 'delGroup') {
     return (
       <SVGIcons
-        alt={i18next.t('label.delete-group')}
+        alt={i18next.t('label.delete-entity', {
+          entity: i18next.t('label.group'),
+        })}
         className="action action--DELETE cursor-pointer "
         height={16}
         icon={Icons.DELETE_COLORED}
@@ -137,31 +143,35 @@ export const renderAdvanceSearchButtons: RenderSettings['renderButton'] = (
   return <></>;
 };
 
-const getSearchLabel = (itemLabel: string, searchKey: string) => {
+export const getSearchLabel = (itemLabel: string, searchKey: string) => {
   const regex = new RegExp(searchKey, 'gi');
-  const result = itemLabel.replace(regex, `<mark>${searchKey}</mark>`);
+  if (searchKey) {
+    const result = itemLabel.replace(regex, (match) => `<mark>${match}</mark>`);
 
-  return result;
+    return result;
+  } else {
+    return itemLabel;
+  }
 };
 
 export const getSearchDropdownLabels = (
-  optionsArray: string[],
+  optionsArray: SearchDropdownOption[],
   checked: boolean,
   searchKey = ''
 ): MenuProps['items'] => {
   if (isArray(optionsArray)) {
     return optionsArray.map((option) => ({
-      key: option,
+      key: option.key,
       label: (
-        <Space className="m-x-sm" data-testid={option} size={6}>
-          <Checkbox checked={checked} data-testid={`${option}-checkbox`} />
+        <Space className="m-x-sm" data-testid={option.key} size={6}>
+          <Checkbox checked={checked} data-testid={`${option.key}-checkbox`} />
           <Typography.Text
             ellipsis
             className="dropdown-option-label"
-            title={option}>
+            title={option.label}>
             <span
               dangerouslySetInnerHTML={{
-                __html: getSearchLabel(option, searchKey),
+                __html: getSearchLabel(option.label, searchKey),
               }}
             />
           </Typography.Text>
@@ -173,15 +183,88 @@ export const getSearchDropdownLabels = (
   }
 };
 
-export const getSelectedOptionLabelString = (selectedOptions: string[]) => {
+export const getSelectedOptionLabelString = (
+  selectedOptions: SearchDropdownOption[],
+  showAllOptions = false
+) => {
   if (isArray(selectedOptions)) {
-    const stringifiedOptions = selectedOptions.join(', ');
-    if (stringifiedOptions.length < 15) {
+    const stringifiedOptions = selectedOptions.map((op) => op.label).join(', ');
+    if (stringifiedOptions.length < 15 || showAllOptions) {
       return stringifiedOptions;
     } else {
       return `${stringifiedOptions.slice(0, 11)}...`;
     }
   } else {
     return '';
+  }
+};
+
+export const getOptionFromDashboardSource = (
+  uniqueOption: FormattedSuggestResponseObject
+): SearchDropdownOption => {
+  const charts = (uniqueOption.source as Dashboard).charts;
+  const option: SearchDropdownOption = { key: '', label: '' };
+
+  if (charts) {
+    // As of now, the value sent by suggest API in uniqueOption.text is uncertain
+    // It is either from name or sometimes from displayName,
+    // we are checking both for now to figure out which 'Dashboard' has desired chart
+    const chart = charts.find(
+      (chart) =>
+        chart.displayName === uniqueOption.text ||
+        chart.name === uniqueOption.text
+    );
+
+    if (chart) {
+      option.key = chart.name ?? '';
+      option.label = chart.displayName ?? chart.name ?? '';
+    }
+  }
+
+  return option;
+};
+
+export const getOptionFromPipelineSource = (
+  uniqueOption: FormattedSuggestResponseObject
+): SearchDropdownOption => {
+  const tasks = (uniqueOption.source as Pipeline).tasks;
+  const option: SearchDropdownOption = { key: '', label: '' };
+
+  if (tasks) {
+    // As of now, the value sent by suggest API in uniqueOption.text is uncertain
+    // It is either from name or sometimes from displayName,
+    // we are checking both for now to figure out which 'Pipeline' has desired task
+    const task = tasks.find(
+      (task) =>
+        task.name === uniqueOption.text ||
+        task.displayName === uniqueOption.text
+    );
+
+    if (task) {
+      option.key = task.name;
+      option.label = task.displayName ?? task.name;
+    }
+  }
+
+  return option;
+};
+
+export const getOptionsObject = (
+  key: string,
+  uniqueOptions: FormattedSuggestResponseObject[]
+): SearchDropdownOption[] => {
+  switch (key) {
+    case EntityFields.CHART: {
+      return uniqueOptions.map((op) => getOptionFromDashboardSource(op));
+    }
+    case EntityFields.TASK: {
+      return uniqueOptions.map((op) => getOptionFromPipelineSource(op));
+    }
+    default: {
+      return uniqueOptions.map((op) => ({
+        key: op.text,
+        label: op.text,
+      }));
+    }
   }
 };

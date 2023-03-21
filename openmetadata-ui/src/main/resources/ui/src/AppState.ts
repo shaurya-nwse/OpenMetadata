@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,11 +11,11 @@
  *  limitations under the License.
  */
 
+import { EntityUnion } from 'components/Explore/explore.interface';
 import { isEmpty, isNil, isUndefined } from 'lodash';
 import { action, makeAutoObservable } from 'mobx';
 import { ClientAuth, NewUser } from 'Models';
 import { reactLocalStorage } from 'reactjs-localstorage';
-import { EntityData } from './components/common/PopOverCard/EntityPopOverCard';
 import { LOCALSTORAGE_USER_PROFILES } from './constants/constants';
 import { CurrentTourPageType } from './enums/tour.enum';
 import { ResourcePermission } from './generated/entity/policies/accessControl/resourcePermission';
@@ -32,14 +32,13 @@ class AppState {
   authDisabled = false;
   authProvider: ClientAuth = {
     authority: '',
-    // eslint-disable-next-line @typescript-eslint/camelcase
     client_id: '',
     signingIn: false,
   };
   nonSecureUserDetails: User = {} as User;
   userDetails: User = {} as User;
   userDataProfiles: Record<string, User> = {};
-  entityData: Record<string, EntityData> = {};
+  entityData: Record<string, EntityUnion> = {};
   userTeams: Array<UserTeams> = [];
   userPermissions: ResourcePermission[] = [];
   userProfilePics: Array<{

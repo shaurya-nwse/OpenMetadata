@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,18 +11,17 @@
  *  limitations under the License.
  */
 
+import DatasetDetails from 'components/DatasetDetails/DatasetDetails.component';
+import Explore from 'components/Explore/Explore.component';
+import MyData from 'components/MyData/MyData.component';
+import { MyDataProps } from 'components/MyData/MyData.interface';
+import NavBar from 'components/nav-bar/NavBar';
+import Tour from 'components/tour/Tour';
 import { noop } from 'lodash';
 import { observer } from 'mobx-react';
-import { LeafNodes } from 'Models';
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import AppState from '../../AppState';
-import DatasetDetails from '../../components/DatasetDetails/DatasetDetails.component';
-import Explore from '../../components/Explore/Explore.component';
-import MyData from '../../components/MyData/MyData.component';
-import { MyDataProps } from '../../components/MyData/MyData.interface';
-import NavBar from '../../components/nav-bar/NavBar';
-import Tour from '../../components/tour/Tour';
 import { ROUTES, TOUR_SEARCH_TERM } from '../../constants/constants';
 import {
   INITIAL_SORT_FIELD,
@@ -39,7 +38,7 @@ import {
   Table,
   TableJoins,
   TableType,
-  TypeUsedToReturnUsageDetailsOfAnEntity,
+  UsageDetails,
 } from '../../generated/entity/data/table';
 import { EntityReference } from '../../generated/type/entityReference';
 import { Paging } from '../../generated/type/paging';
@@ -53,6 +52,7 @@ const exploreCount = {
   [SearchIndex.DASHBOARD]: 0,
   [SearchIndex.PIPELINE]: 0,
   [SearchIndex.MLMODEL]: 0,
+  [SearchIndex.CONTAINER]: 0,
 };
 
 const TourPage = () => {
@@ -70,10 +70,6 @@ const TourPage = () => {
 
   const handleCountChange = async () => {
     setExplorePageCounts(exploreCount);
-  };
-
-  const mockPromiseFunction = (): Promise<void> => {
-    return new Promise<void>((resolve) => resolve());
   };
 
   const clearSearchTerm = () => {
@@ -119,16 +115,18 @@ const TourPage = () => {
       case CurrentTourPageType.MY_DATA_PAGE:
         return (
           <MyData
-            entityCounts={{
-              tableCount: 21,
-              topicCount: 20,
-              dashboardCount: 10,
-              pipelineCount: 8,
-              mlmodelCount: 2,
-              servicesCount: 4,
-              userCount: 100,
-              teamCount: 7,
-              testSuiteCount: 2,
+            data={{
+              entityCounts: {
+                tableCount: 21,
+                topicCount: 20,
+                dashboardCount: 10,
+                pipelineCount: 8,
+                mlmodelCount: 2,
+                servicesCount: 4,
+                userCount: 100,
+                teamCount: 7,
+                testSuiteCount: 2,
+              },
             }}
             error=""
             feedData={myDataSearchResult as MyDataProps['feedData']}
@@ -139,6 +137,7 @@ const TourPage = () => {
             followedData={[]}
             followedDataCount={1}
             isFeedLoading={false}
+            isLoadingOwnedData={false}
             ownedData={[]}
             ownedDataCount={1}
             paging={{} as Paging}
@@ -158,7 +157,6 @@ const TourPage = () => {
             sortOrder={INITIAL_SORT_ORDER}
             sortValue={INITIAL_SORT_FIELD}
             tabCounts={explorePageCounts}
-            onChangeAdvancedSearchJsonTree={noop}
             onChangeAdvancedSearchQueryFilter={noop}
             onChangePostFilter={noop}
             onChangeSearchIndex={noop}
@@ -172,7 +170,6 @@ const TourPage = () => {
         return (
           <DatasetDetails
             activeTab={datasetActiveTab}
-            addLineageHandler={mockPromiseFunction}
             columns={mockDatasetData.columns as unknown as Table['columns']}
             columnsUpdateHandler={handleCountChange}
             createThread={handleCountChange}
@@ -182,8 +179,6 @@ const TourPage = () => {
             descriptionUpdateHandler={handleCountChange}
             entityFieldTaskCount={[]}
             entityFieldThreadCount={[]}
-            entityLineage={mockDatasetData.entityLineage}
-            entityLineageHandler={handleCountChange}
             entityName={mockDatasetData.entityName}
             entityThread={mockFeedData}
             feedCount={0}
@@ -191,18 +186,11 @@ const TourPage = () => {
             followTableHandler={handleCountChange}
             followers={mockDatasetData.followers}
             handleExtensionUpdate={handleCountChange}
-            isNodeLoading={{
-              id: undefined,
-              state: false,
-            }}
             isentityThreadLoading={false}
             joins={mockDatasetData.joins as unknown as TableJoins}
-            lineageLeafNodes={{} as LeafNodes}
-            loadNodeHandler={handleCountChange}
             owner={undefined as unknown as EntityReference}
             paging={{} as Paging}
             postFeedHandler={handleCountChange}
-            removeLineageHandler={handleCountChange}
             sampleData={mockDatasetData.sampleData}
             setActiveTabHandler={(tab) => setdatasetActiveTab(tab)}
             settingsUpdateHandler={() => Promise.resolve()}
@@ -211,7 +199,6 @@ const TourPage = () => {
             tableProfile={
               mockDatasetData.tableProfile as unknown as Table['profile']
             }
-            tableQueries={[]}
             tableTags={mockDatasetData.tableTags}
             tableType={mockDatasetData.tableType as TableType}
             tagUpdateHandler={handleCountChange}
@@ -219,7 +206,7 @@ const TourPage = () => {
             unfollowTableHandler={handleCountChange}
             updateThreadHandler={handleOnClick}
             usageSummary={
-              mockDatasetData.usageSummary as unknown as TypeUsedToReturnUsageDetailsOfAnEntity
+              mockDatasetData.usageSummary as unknown as UsageDetails
             }
             versionHandler={handleCountChange}
           />

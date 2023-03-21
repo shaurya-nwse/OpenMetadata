@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -13,32 +13,27 @@
 
 import { Button, Divider, Popover, Space, Typography } from 'antd';
 import { AxiosError } from 'axios';
+import { EntityUnion } from 'components/Explore/explore.interface';
 import { uniqueId } from 'lodash';
 import { EntityTags } from 'Models';
 import React, { FC, HTMLAttributes, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import AppState from '../../../AppState';
-import { getDashboardByFqn } from '../../../axiosAPIs/dashboardAPI';
+import { getDashboardByFqn } from 'rest/dashboardAPI';
 import {
   getDatabaseDetailsByFQN,
   getDatabaseSchemaDetailsByFQN,
-} from '../../../axiosAPIs/databaseAPI';
-import { getMlModelByFQN } from '../../../axiosAPIs/mlModelAPI';
-import { getPipelineByFqn } from '../../../axiosAPIs/pipelineAPI';
-import { getTableDetailsByFQN } from '../../../axiosAPIs/tableAPI';
-import { getTopicByFqn } from '../../../axiosAPIs/topicsAPI';
+} from 'rest/databaseAPI';
+import { getMlModelByFQN } from 'rest/mlModelAPI';
+import { getPipelineByFqn } from 'rest/pipelineAPI';
+import { getTableDetailsByFQN } from 'rest/tableAPI';
+import { getTopicByFqn } from 'rest/topicsAPI';
+import { getEntityName } from 'utils/EntityUtils';
+import AppState from '../../../AppState';
 import { FQN_SEPARATOR_CHAR } from '../../../constants/char.constants';
 import { EntityType } from '../../../enums/entity.enum';
-import { Dashboard } from '../../../generated/entity/data/dashboard';
-import { Database } from '../../../generated/entity/data/database';
-import { DatabaseSchema } from '../../../generated/entity/data/databaseSchema';
-import { Mlmodel } from '../../../generated/entity/data/mlmodel';
-import { Pipeline } from '../../../generated/entity/data/pipeline';
 import { Table } from '../../../generated/entity/data/table';
-import { Topic } from '../../../generated/entity/data/topic';
 import { TagSource } from '../../../generated/type/tagLabel';
-import { getEntityName } from '../../../utils/CommonUtils';
 import SVGIcons from '../../../utils/SvgUtils';
 import {
   getEntityLink,
@@ -49,15 +44,6 @@ import { showErrorToast } from '../../../utils/ToastUtils';
 import ProfilePicture from '../ProfilePicture/ProfilePicture';
 import RichTextEditorPreviewer from '../rich-text-editor/RichTextEditorPreviewer';
 
-export type EntityData =
-  | Table
-  | Topic
-  | Dashboard
-  | Pipeline
-  | Mlmodel
-  | Database
-  | DatabaseSchema;
-
 interface Props extends HTMLAttributes<HTMLDivElement> {
   entityType: string;
   entityFQN: string;
@@ -65,7 +51,7 @@ interface Props extends HTMLAttributes<HTMLDivElement> {
 
 const EntityPopOverCard: FC<Props> = ({ children, entityType, entityFQN }) => {
   const { t } = useTranslation();
-  const [entityData, setEntityData] = useState<EntityData>({} as EntityData);
+  const [entityData, setEntityData] = useState<EntityUnion>({} as EntityUnion);
 
   const entityTier = useMemo(() => {
     const tierFQN = getTierTags((entityData as Table).tags || [])?.tagFQN;
@@ -83,13 +69,13 @@ const EntityPopOverCard: FC<Props> = ({ children, entityType, entityFQN }) => {
   }, [(entityData as Table).tags]);
 
   const getData = () => {
-    const setEntityDetails = (entityDetail: EntityData) => {
+    const setEntityDetails = (entityDetail: EntityUnion) => {
       AppState.entityData[entityFQN] = entityDetail;
     };
 
     const fields = 'tags,owner';
 
-    let promise: Promise<EntityData> | null = null;
+    let promise: Promise<EntityUnion> | null = null;
 
     switch (entityType) {
       case EntityType.TABLE:
@@ -218,7 +204,7 @@ const EntityPopOverCard: FC<Props> = ({ children, entityType, entityFQN }) => {
         {entityTags.length ? (
           <>
             <Divider className="m-b-xs m-t-sm" />
-            <div className="flex flex-start">
+            <div className="d-flex flex-start">
               <span className="w-5 m-r-xs">
                 <SVGIcons alt="icon-tag" icon="icon-tag-grey" width="14" />
               </span>

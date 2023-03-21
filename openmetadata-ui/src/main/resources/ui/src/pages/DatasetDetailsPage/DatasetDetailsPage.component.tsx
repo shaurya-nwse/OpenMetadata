@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -12,45 +12,31 @@
  */
 
 import { AxiosError } from 'axios';
-import { compare, Operation } from 'fast-json-patch';
-import { isEmpty, isUndefined } from 'lodash';
-import { observer } from 'mobx-react';
-import {
-  EntityFieldThreadCount,
-  EntityTags,
-  LeafNodes,
-  LineagePos,
-  LoadingNodeState,
-} from 'Models';
-import React, { FunctionComponent, useEffect, useState } from 'react';
-import { useHistory, useParams } from 'react-router-dom';
-import AppState from '../../AppState';
-import {
-  getAllFeeds,
-  postFeedById,
-  postThread,
-} from '../../axiosAPIs/feedsAPI';
-import { getLineageByFQN } from '../../axiosAPIs/lineageAPI';
-import { addLineage, deleteLineageEdge } from '../../axiosAPIs/miscAPI';
-import {
-  addFollower,
-  getTableDetailsByFQN,
-  patchTableDetails,
-  removeFollower,
-} from '../../axiosAPIs/tableAPI';
-import ErrorPlaceHolder from '../../components/common/error-with-placeholder/ErrorPlaceHolder';
-import { TitleBreadcrumbProps } from '../../components/common/title-breadcrumb/title-breadcrumb.interface';
-import DatasetDetails from '../../components/DatasetDetails/DatasetDetails.component';
-import {
-  Edge,
-  EdgeData,
-} from '../../components/EntityLineage/EntityLineage.interface';
-import Loader from '../../components/Loader/Loader';
-import { usePermissionProvider } from '../../components/PermissionProvider/PermissionProvider';
+import ErrorPlaceHolder from 'components/common/error-with-placeholder/ErrorPlaceHolder';
+import { TitleBreadcrumbProps } from 'components/common/title-breadcrumb/title-breadcrumb.interface';
+import DatasetDetails from 'components/DatasetDetails/DatasetDetails.component';
+import Loader from 'components/Loader/Loader';
+import { usePermissionProvider } from 'components/PermissionProvider/PermissionProvider';
 import {
   OperationPermission,
   ResourceEntity,
-} from '../../components/PermissionProvider/PermissionProvider.interface';
+} from 'components/PermissionProvider/PermissionProvider.interface';
+import { compare, Operation } from 'fast-json-patch';
+import { isEmpty, isUndefined } from 'lodash';
+import { observer } from 'mobx-react';
+import { EntityTags } from 'Models';
+import React, { FunctionComponent, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useHistory, useParams } from 'react-router-dom';
+import { getAllFeeds, postFeedById, postThread } from 'rest/feedsAPI';
+import {
+  addFollower,
+  getLatestTableProfileByFqn,
+  getTableDetailsByFQN,
+  patchTableDetails,
+  removeFollower,
+} from 'rest/tableAPI';
+import AppState from '../../AppState';
 import { FQN_SEPARATOR_CHAR } from '../../constants/char.constants';
 import {
   getDatabaseDetailsPath,
@@ -70,19 +56,18 @@ import {
   TableData,
   TableJoins,
   TableType,
-  TypeUsedToReturnUsageDetailsOfAnEntity,
+  UsageDetails,
 } from '../../generated/entity/data/table';
 import { Post, Thread, ThreadType } from '../../generated/entity/feed/thread';
-import { EntityLineage } from '../../generated/type/entityLineage';
 import { EntityReference } from '../../generated/type/entityReference';
 import { Paging } from '../../generated/type/paging';
 import { TagLabel } from '../../generated/type/tagLabel';
+import { EntityFieldThreadCount } from '../../interface/feed.interface';
 import jsonData from '../../jsons/en';
 import {
   addToRecentViewed,
   getCurrentUserId,
   getEntityMissingError,
-  getEntityName,
   getFeedCounts,
   getFields,
   getPartialNameFromTableFQN,
@@ -92,7 +77,7 @@ import {
   defaultFields,
   getCurrentDatasetTab,
 } from '../../utils/DatasetDetailsUtils';
-import { getEntityFeedLink, getEntityLineage } from '../../utils/EntityUtils';
+import { getEntityFeedLink, getEntityName } from '../../utils/EntityUtils';
 import { deletePost, updateThreadData } from '../../utils/FeedUtils';
 import { DEFAULT_ENTITY_PERMISSION } from '../../utils/PermissionsUtils';
 import { serviceTypeLogo } from '../../utils/ServiceUtils';
@@ -101,14 +86,14 @@ import { showErrorToast } from '../../utils/ToastUtils';
 
 const DatasetDetailsPage: FunctionComponent = () => {
   const history = useHistory();
+  const { t } = useTranslation();
   const { getEntityPermissionByFqn } = usePermissionProvider();
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isLineageLoading, setIsLineageLoading] = useState<boolean>(false);
   const [isSampleDataLoading, setIsSampleDataLoading] =
     useState<boolean>(false);
-  const [isTableQueriesLoading, setIsTableQueriesLoading] =
-    useState<boolean>(false);
   const [isentityThreadLoading, setIsentityThreadLoading] =
+    useState<boolean>(false);
+  const [isTableProfileLoading, setIsTableProfileLoading] =
     useState<boolean>(false);
   const USERId = getCurrentUserId();
   const [tableId, setTableId] = useState('');
@@ -137,19 +122,10 @@ const DatasetDetailsPage: FunctionComponent = () => {
   const [tableDetails, setTableDetails] = useState<Table>({} as Table);
   const { datasetFQN, tab } = useParams() as Record<string, string>;
   const [activeTab, setActiveTab] = useState<number>(getCurrentDatasetTab(tab));
-  const [entityLineage, setEntityLineage] = useState<EntityLineage>(
-    {} as EntityLineage
+  const [usageSummary, setUsageSummary] = useState<UsageDetails>(
+    {} as UsageDetails
   );
-  const [leafNodes, setLeafNodes] = useState<LeafNodes>({} as LeafNodes);
-  const [usageSummary, setUsageSummary] =
-    useState<TypeUsedToReturnUsageDetailsOfAnEntity>(
-      {} as TypeUsedToReturnUsageDetailsOfAnEntity
-    );
   const [currentVersion, setCurrentVersion] = useState<string>();
-  const [isNodeLoading, setNodeLoading] = useState<LoadingNodeState>({
-    id: undefined,
-    state: false,
-  });
   const [tableFQN, setTableFQN] = useState<string>(
     getPartialNameFromTableFQN(
       datasetFQN,
@@ -159,7 +135,6 @@ const DatasetDetailsPage: FunctionComponent = () => {
   );
   const [deleted, setDeleted] = useState<boolean>(false);
   const [isError, setIsError] = useState(false);
-  const [tableQueries, setTableQueries] = useState<Table['tableQueries']>([]);
   const [entityThread, setEntityThread] = useState<Thread[]>([]);
 
   const [feedCount, setFeedCount] = useState<number>(0);
@@ -189,27 +164,6 @@ const DatasetDetailsPage: FunctionComponent = () => {
         ),
       });
     }
-  };
-
-  const getLineageData = () => {
-    setIsLineageLoading(true);
-    getLineageByFQN(tableFQN, EntityType.TABLE)
-      .then((res) => {
-        if (res) {
-          setEntityLineage(res);
-        } else {
-          showErrorToast(jsonData['api-error-messages']['fetch-lineage-error']);
-        }
-      })
-      .catch((err: AxiosError) => {
-        showErrorToast(
-          err,
-          jsonData['api-error-messages']['fetch-lineage-error']
-        );
-      })
-      .finally(() => {
-        setIsLineageLoading(false);
-      });
   };
 
   const getFeedData = (
@@ -295,7 +249,6 @@ const DatasetDetailsPage: FunctionComponent = () => {
             joins,
             tags,
             sampleData,
-            profile,
             tableType,
             version,
             service,
@@ -360,11 +313,8 @@ const DatasetDetailsPage: FunctionComponent = () => {
           setDescription(description ?? '');
           setColumns(columns || []);
           setSampleData(sampleData as TableData);
-          setTableProfile(profile);
           setTableTags(getTagsWithoutTier(tags || []));
-          setUsageSummary(
-            usageSummary as TypeUsedToReturnUsageDetailsOfAnEntity
-          );
+          setUsageSummary(usageSummary as UsageDetails);
           setJoins(joins as TableJoins);
         } else {
           showErrorToast(
@@ -386,6 +336,29 @@ const DatasetDetailsPage: FunctionComponent = () => {
       .finally(() => {
         setIsLoading(false);
       });
+  };
+
+  const fetchTableProfileDetails = async () => {
+    if (!isEmpty(tableDetails)) {
+      setIsTableProfileLoading(true);
+      try {
+        const { profile } = await getLatestTableProfileByFqn(
+          tableDetails.fullyQualifiedName ?? ''
+        );
+
+        setTableProfile(profile);
+      } catch (err) {
+        showErrorToast(
+          err as AxiosError,
+          t('server.entity-details-fetch-error', {
+            entityType: t('label.table'),
+            entityName: tableDetails.displayName ?? tableDetails.name,
+          })
+        );
+      } finally {
+        setIsTableProfileLoading(false);
+      }
+    }
   };
 
   const fetchTabSpecificData = (tabField = '') => {
@@ -419,44 +392,9 @@ const DatasetDetailsPage: FunctionComponent = () => {
       }
 
       case TabSpecificField.LINEAGE: {
-        if (!deleted) {
-          if (isEmpty(entityLineage)) {
-            getLineageData();
-          }
-
-          break;
-        }
-
         break;
       }
 
-      case TabSpecificField.TABLE_QUERIES: {
-        if ((tableQueries?.length ?? 0) > 0) {
-          break;
-        } else {
-          setIsTableQueriesLoading(true);
-          getTableDetailsByFQN(tableFQN, tabField)
-            .then((res) => {
-              if (res) {
-                const { tableQueries } = res;
-                setTableQueries(tableQueries);
-              } else {
-                showErrorToast(
-                  jsonData['api-error-messages']['fetch-table-queries-error']
-                );
-              }
-            })
-            .catch((err: AxiosError) => {
-              showErrorToast(
-                err,
-                jsonData['api-error-messages']['fetch-table-queries-error']
-              );
-            })
-            .finally(() => setIsTableQueriesLoading(false));
-
-          break;
-        }
-      }
       case TabSpecificField.ACTIVITY_FEED: {
         getFeedData();
 
@@ -633,79 +571,6 @@ const DatasetDetailsPage: FunctionComponent = () => {
     );
   };
 
-  const setLeafNode = (val: EntityLineage, pos: LineagePos) => {
-    if (pos === 'to' && val.downstreamEdges?.length === 0) {
-      setLeafNodes((prev) => ({
-        ...prev,
-        downStreamNode: [...(prev.downStreamNode ?? []), val.entity.id],
-      }));
-    }
-    if (pos === 'from' && val.upstreamEdges?.length === 0) {
-      setLeafNodes((prev) => ({
-        ...prev,
-        upStreamNode: [...(prev.upStreamNode ?? []), val.entity.id],
-      }));
-    }
-  };
-
-  const entityLineageHandler = (lineage: EntityLineage) => {
-    setEntityLineage(lineage);
-  };
-
-  const loadNodeHandler = (node: EntityReference, pos: LineagePos) => {
-    setNodeLoading({ id: node.id, state: true });
-    getLineageByFQN(node.fullyQualifiedName ?? '', node.type)
-      .then((res) => {
-        if (res) {
-          setLeafNode(res, pos);
-          setEntityLineage(getEntityLineage(entityLineage, res, pos));
-        } else {
-          showErrorToast(
-            jsonData['api-error-messages']['fetch-lineage-node-error']
-          );
-        }
-        setTimeout(() => {
-          setNodeLoading((prev) => ({ ...prev, state: false }));
-        }, 500);
-      })
-      .catch((err: AxiosError) => {
-        showErrorToast(
-          err,
-          jsonData['api-error-messages']['fetch-lineage-node-error']
-        );
-      });
-  };
-
-  const addLineageHandler = (edge: Edge): Promise<void> => {
-    return new Promise<void>((resolve, reject) => {
-      addLineage(edge)
-        .then(() => {
-          resolve();
-        })
-        .catch((err: AxiosError) => {
-          showErrorToast(
-            err,
-            jsonData['api-error-messages']['add-lineage-error']
-          );
-          reject();
-        });
-    });
-  };
-
-  const removeLineageHandler = (data: EdgeData) => {
-    deleteLineageEdge(
-      data.fromEntity,
-      data.fromId,
-      data.toEntity,
-      data.toId
-    ).catch((err: AxiosError) => {
-      showErrorToast(
-        err,
-        jsonData['api-error-messages']['delete-lineage-error']
-      );
-    });
-  };
-
   const postFeedHandler = (value: string, id: string) => {
     const currentUser = AppState.userDetails?.name ?? AppState.users[0]?.name;
 
@@ -805,6 +670,10 @@ const DatasetDetailsPage: FunctionComponent = () => {
   }, [tablePermissions]);
 
   useEffect(() => {
+    !tableDetails.deleted && fetchTableProfileDetails();
+  }, [tableDetails]);
+
+  useEffect(() => {
     fetchResourcePermission(tableFQN);
   }, [tableFQN]);
 
@@ -816,7 +685,6 @@ const DatasetDetailsPage: FunctionComponent = () => {
         FQN_SEPARATOR_CHAR
       )
     );
-    setEntityLineage({} as EntityLineage);
   }, [datasetFQN]);
 
   return (
@@ -832,7 +700,6 @@ const DatasetDetailsPage: FunctionComponent = () => {
           {tablePermissions.ViewAll || tablePermissions.ViewBasic ? (
             <DatasetDetails
               activeTab={activeTab}
-              addLineageHandler={addLineageHandler}
               columns={columns}
               columnsUpdateHandler={columnsUpdateHandler}
               createThread={createThread}
@@ -844,8 +711,6 @@ const DatasetDetailsPage: FunctionComponent = () => {
               descriptionUpdateHandler={descriptionUpdateHandler}
               entityFieldTaskCount={entityFieldTaskCount}
               entityFieldThreadCount={entityFieldThreadCount}
-              entityLineage={entityLineage}
-              entityLineageHandler={entityLineageHandler}
               entityName={name}
               entityThread={entityThread}
               feedCount={feedCount}
@@ -853,25 +718,19 @@ const DatasetDetailsPage: FunctionComponent = () => {
               followTableHandler={followTable}
               followers={followers}
               handleExtensionUpdate={handleExtentionUpdate}
-              isLineageLoading={isLineageLoading}
-              isNodeLoading={isNodeLoading}
-              isQueriesLoading={isTableQueriesLoading}
               isSampleDataLoading={isSampleDataLoading}
+              isTableProfileLoading={isTableProfileLoading}
               isentityThreadLoading={isentityThreadLoading}
               joins={joins}
-              lineageLeafNodes={leafNodes}
-              loadNodeHandler={loadNodeHandler}
               owner={owner as EntityReference}
               paging={paging}
               postFeedHandler={postFeedHandler}
-              removeLineageHandler={removeLineageHandler}
               sampleData={sampleData}
               setActiveTabHandler={activeTabHandler}
               settingsUpdateHandler={settingsUpdateHandler}
               slashedTableName={slashedTableName}
               tableDetails={tableDetails}
               tableProfile={tableProfile}
-              tableQueries={tableQueries}
               tableTags={tableTags}
               tableType={tableType}
               tagUpdateHandler={onTagUpdate}

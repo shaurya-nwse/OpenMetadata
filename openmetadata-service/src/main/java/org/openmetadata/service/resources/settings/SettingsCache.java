@@ -13,21 +13,16 @@
 
 package org.openmetadata.service.resources.settings;
 
-import static org.openmetadata.schema.settings.SettingsType.ACTIVITY_FEED_FILTER_SETTING;
-
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import com.google.common.util.concurrent.UncheckedExecutionException;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.CheckForNull;
 import lombok.extern.slf4j.Slf4j;
 import org.openmetadata.schema.settings.Settings;
 import org.openmetadata.schema.settings.SettingsType;
-import org.openmetadata.service.exception.EntityNotFoundException;
 import org.openmetadata.service.jdbi3.CollectionDAO;
-import org.openmetadata.service.jdbi3.SettingsRepository;
+import org.openmetadata.service.jdbi3.SystemRepository;
 import org.openmetadata.service.util.JsonUtils;
 
 @Slf4j
@@ -35,31 +30,20 @@ public class SettingsCache {
   private static final SettingsCache INSTANCE = new SettingsCache();
   private static volatile boolean INITIALIZED = false;
   protected static LoadingCache<String, Settings> SETTINGS_CACHE;
-  protected static SettingsRepository SETTINGS_REPOSITORY;
+  protected static SystemRepository systemRepository;
 
   // Expected to be called only once from the DefaultAuthorizer
   public static void initialize(CollectionDAO dao) {
     if (!INITIALIZED) {
       SETTINGS_CACHE =
-          CacheBuilder.newBuilder()
-              .maximumSize(1000)
-              .expireAfterAccess(1, TimeUnit.MINUTES)
-              .build(new SettingsLoader());
-      SETTINGS_REPOSITORY = new SettingsRepository(dao);
+          CacheBuilder.newBuilder().maximumSize(1000).expireAfterWrite(3, TimeUnit.MINUTES).build(new SettingsLoader());
+      systemRepository = new SystemRepository(dao.systemDAO());
       INITIALIZED = true;
     }
   }
 
   public static SettingsCache getInstance() {
     return INSTANCE;
-  }
-
-  public Settings getEventFilters() throws EntityNotFoundException {
-    try {
-      return SETTINGS_CACHE.get(ACTIVITY_FEED_FILTER_SETTING.toString());
-    } catch (ExecutionException | UncheckedExecutionException ex) {
-      throw new EntityNotFoundException(ex.getMessage());
-    }
   }
 
   public <T> T getSetting(SettingsType settingName, Class<T> clazz) throws RuntimeException {
@@ -69,10 +53,6 @@ public class SettingsCache {
     } catch (Exception ex) {
       throw new RuntimeException(ex);
     }
-  }
-
-  public void putSettings(Settings setting) throws RuntimeException {
-    SETTINGS_CACHE.put(setting.getConfigType().toString(), setting);
   }
 
   public static void cleanUp() {
@@ -91,7 +71,7 @@ public class SettingsCache {
   static class SettingsLoader extends CacheLoader<String, Settings> {
     @Override
     public Settings load(@CheckForNull String settingsName) {
-      Settings setting = SETTINGS_REPOSITORY.getConfigWithKey(settingsName);
+      Settings setting = systemRepository.getConfigWithKey(settingsName);
       LOG.info("Loaded Setting {}", setting.getConfigType());
       return setting;
     }

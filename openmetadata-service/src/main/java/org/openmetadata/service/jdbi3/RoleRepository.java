@@ -45,8 +45,7 @@ public class RoleRepository extends EntityRepository<Role> {
   public Role setFields(Role role, Fields fields) throws IOException {
     role.setPolicies(fields.contains(POLICIES) ? getPolicies(role) : null);
     role.setTeams(fields.contains("teams") ? getTeams(role) : null);
-    role.setUsers(fields.contains("users") ? getUsers(role) : null);
-    return role;
+    return role.withUsers(fields.contains("users") ? getUsers(role) : null);
   }
 
   private List<EntityReference> getPolicies(@NonNull Role role) throws IOException {
@@ -91,11 +90,11 @@ public class RoleRepository extends EntityRepository<Role> {
   @Override
   @Transaction
   public void storeEntity(Role role, boolean update) throws IOException {
-    // Don't store policy and href as JSON. Build it on the fly based on relationships
+    // Don't store policy. Build it on the fly based on relationships
     List<EntityReference> policies = role.getPolicies();
-    role.withPolicies(null).withHref(null);
+    role.withPolicies(null);
     store(role, update);
-    role.withPolicies(policies); // Restore policies
+    role.withPolicies(policies);
   }
 
   @Override

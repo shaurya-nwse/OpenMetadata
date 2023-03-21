@@ -26,7 +26,6 @@ import static org.openmetadata.service.util.TestUtils.assertResponse;
 import static org.openmetadata.service.util.TestUtils.assertResponseContains;
 
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -35,10 +34,8 @@ import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Response.Status;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.client.HttpResponseException;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.openmetadata.schema.api.CreateType;
 import org.openmetadata.schema.entity.Type;
@@ -63,12 +60,7 @@ public class TypeResourceTest extends EntityResourceTest<Type, CreateType> {
     super(Entity.TYPE, Type.class, TypeList.class, "metadata/types", TypeResource.PROPERTIES);
     supportsEmptyDescription = false;
     supportsFieldsQueryParam = false;
-    supportsNameWithDot = false;
-  }
-
-  @BeforeAll
-  public void setup(TestInfo test) throws IOException, URISyntaxException {
-    super.setup(test);
+    supportedNameCharacters = "_" + RANDOM_STRING_GENERATOR.generate(1); // No other special characters allowed
   }
 
   public void setupTypes() throws HttpResponseException {
@@ -79,18 +71,15 @@ public class TypeResourceTest extends EntityResourceTest<Type, CreateType> {
   @Override
   @Test
   public void post_entityCreateWithInvalidName_400() {
-    String[][] tests = {
-      {"Abcd", "[name must match \"^[a-z][a-zA-Z0-9]+$\"]"},
-      {"a bc", "[name must match \"^[a-z][a-zA-Z0-9]+$\"]"}, // Name must not have space
-      {"a_bc", "[name must match \"^[a-z][a-zA-Z0-9]+$\"]"}, // Name must not be underscored
-      {"a-bc", "[name must match \"^[a-z][a-zA-Z0-9]+$\"]"}, // Name must not be hyphened
-    };
+    // Names can't start with capital letter, can't have space, hyphen, apostrophe
+    String[] tests = {"a bc", "a-bc", "a'b"};
 
+    String error = "[name must match \"^(?U)[\\w]+$\"]";
     CreateType create = createRequest("placeHolder", "", "", null);
-    for (String[] test : tests) {
-      LOG.info("Testing with the name {}", test[0]);
-      create.withName(test[0]);
-      assertResponseContains(() -> createEntity(create, ADMIN_AUTH_HEADERS), Status.BAD_REQUEST, test[1]);
+    for (String test : tests) {
+      LOG.info("Testing with the name {}", test);
+      create.withName(test);
+      assertResponseContains(() -> createEntity(create, ADMIN_AUTH_HEADERS), Status.BAD_REQUEST, error);
     }
   }
 
@@ -213,22 +202,23 @@ public class TypeResourceTest extends EntityResourceTest<Type, CreateType> {
 
   @Override
   public CreateType createRequest(String name) {
-    if (name != null) {
-      name = name.replaceAll("[. _-]", "");
-    }
     return new CreateType().withName(name).withCategory(Category.Field).withSchema(INT_TYPE.getSchema());
   }
 
   @Override
   public void validateCreatedEntity(Type createdEntity, CreateType createRequest, Map<String, String> authHeaders) {
     assertEquals(createRequest.getSchema(), createdEntity.getSchema());
-    // TODO
+    assertEquals(createRequest.getCategory(), createdEntity.getCategory());
+    assertEquals(createRequest.getNameSpace(), createdEntity.getNameSpace());
   }
 
   @Override
   public void compareEntities(Type expected, Type patched, Map<String, String> authHeaders) {
     assertEquals(expected.getSchema(), patched.getSchema());
-    // TODO more checks
+    assertEquals(expected.getSchema(), patched.getSchema());
+    assertEquals(expected.getCategory(), patched.getCategory());
+    assertEquals(expected.getNameSpace(), patched.getNameSpace());
+    assertEquals(expected.getCustomProperties(), patched.getCustomProperties());
   }
 
   @Override
@@ -237,6 +227,7 @@ public class TypeResourceTest extends EntityResourceTest<Type, CreateType> {
       return;
     }
     if (fieldName.equals("customProperties")) {
+      @SuppressWarnings("unchecked")
       List<CustomProperty> expectedProperties = (List<CustomProperty>) expected;
       List<CustomProperty> actualProperties = JsonUtils.readObjects(actual.toString(), CustomProperty.class);
       TestUtils.assertCustomProperties(expectedProperties, actualProperties);

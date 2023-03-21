@@ -14,10 +14,9 @@ Test database connectors with CLI
 """
 import os
 import re
+import subprocess
 from abc import abstractmethod
-from contextlib import redirect_stdout
 from enum import Enum
-from io import StringIO
 from pathlib import Path
 from typing import List
 from unittest import TestCase
@@ -25,18 +24,24 @@ from unittest import TestCase
 import pytest
 import yaml
 
-from metadata.cmd import metadata
 from metadata.config.common import load_config_file
 from metadata.generated.schema.entity.data.table import Table
 from metadata.ingestion.api.sink import SinkStatus
 from metadata.ingestion.api.source import SourceStatus
 from metadata.ingestion.api.workflow import Workflow
 from metadata.ingestion.ometa.ometa_api import OpenMetadata
+from metadata.utils.constants import UTF_8
 
 PATH_TO_RESOURCES = os.path.dirname(os.path.realpath(__file__))
 
+REGEX_AUX = {"log": r"\s+\[[^]]+]\s+[A-Z]+\s+[^}]+}\s+-\s+"}
+
 
 class E2EType(Enum):
+    """
+    E2E Type Enum Class
+    """
+
     INGEST = "ingest"
     PROFILER = "profiler"
     INGEST_FILTER_SCHEMA = "ingest-filter-schema"
@@ -45,8 +50,15 @@ class E2EType(Enum):
 
 
 class CliDBBase(TestCase):
-    class TestSuite(TestCase):
-        catcher = StringIO()
+    """
+    CLI DB Base class
+    """
+
+    class TestSuite(TestCase):  # pylint: disable=too-many-public-methods
+        """
+        TestSuite class to define test structure
+        """
+
         openmetadata: OpenMetadata
         test_file_path: str
         config_file_path: str
@@ -57,9 +69,7 @@ class CliDBBase(TestCase):
             # build config file for ingest
             self.build_config_file(E2EType.INGEST)
             # run ingest with new tables
-            self.run_command()
-            result = self.catcher.getvalue()
-            self.catcher.truncate(0)
+            result = self.run_command()
             sink_status, source_status = self.retrieve_statuses(result)
             self.assert_for_vanilla_ingestion(source_status, sink_status)
 
@@ -74,14 +84,10 @@ class CliDBBase(TestCase):
             self.build_config_file()
             # run ingest with new tables
             self.run_command()
-            self.catcher.truncate(0)
             # build config file for profiler
             self.build_config_file(E2EType.PROFILER)
             # run profiler with new tables
-            self.run_command("profile")
-            result = self.catcher.getvalue()
-            self.catcher.truncate(0)
-
+            result = self.run_command("profile")
             sink_status, source_status = self.retrieve_statuses(result)
             self.assert_for_table_with_profiler(source_status, sink_status)
 
@@ -93,9 +99,7 @@ class CliDBBase(TestCase):
             # build config file for ingest
             self.build_config_file()
             # run ingest
-            self.run_command()
-            result = self.catcher.getvalue()
-            self.catcher.truncate(0)
+            result = self.run_command()
 
             sink_status, source_status = self.retrieve_statuses(result)
             self.assert_for_delete_table_is_marked_as_deleted(
@@ -110,9 +114,7 @@ class CliDBBase(TestCase):
                 E2EType.INGEST_FILTER_SCHEMA, {"includes": self.get_includes_schemas()}
             )
             # run ingest
-            self.run_command()
-            result = self.catcher.getvalue()
-            self.catcher.truncate(0)
+            result = self.run_command()
 
             sink_status, source_status = self.retrieve_statuses(result)
             self.assert_filtered_schemas_includes(source_status, sink_status)
@@ -125,9 +127,7 @@ class CliDBBase(TestCase):
                 E2EType.INGEST_FILTER_SCHEMA, {"excludes": self.get_includes_schemas()}
             )
             # run ingest
-            self.run_command()
-            result = self.catcher.getvalue()
-            self.catcher.truncate(0)
+            result = self.run_command()
             sink_status, source_status = self.retrieve_statuses(result)
             self.assert_filtered_schemas_excludes(source_status, sink_status)
 
@@ -139,9 +139,7 @@ class CliDBBase(TestCase):
                 E2EType.INGEST_FILTER_TABLE, {"includes": self.get_includes_tables()}
             )
             # run ingest
-            self.run_command()
-            result = self.catcher.getvalue()
-            self.catcher.truncate(0)
+            result = self.run_command()
 
             sink_status, source_status = self.retrieve_statuses(result)
             self.assert_filtered_tables_includes(source_status, sink_status)
@@ -154,9 +152,7 @@ class CliDBBase(TestCase):
                 E2EType.INGEST_FILTER_TABLE, {"excludes": self.get_includes_tables()}
             )
             # run ingest
-            self.run_command()
-            result = self.catcher.getvalue()
-            self.catcher.truncate(0)
+            result = self.run_command()
             sink_status, source_status = self.retrieve_statuses(result)
             self.assert_filtered_tables_excludes(source_status, sink_status)
 
@@ -175,9 +171,7 @@ class CliDBBase(TestCase):
                 },
             )
             # run ingest
-            self.run_command()
-            result = self.catcher.getvalue()
-            self.catcher.truncate(0)
+            result = self.run_command()
             sink_status, source_status = self.retrieve_statuses(result)
             self.assert_filtered_mix(source_status, sink_status)
 
@@ -193,24 +187,25 @@ class CliDBBase(TestCase):
             # to be implemented
             pass
 
-        def run_command(self, command: str = "ingest"):
+        def run_command(self, command: str = "ingest") -> str:
             args = [
+                "metadata",
                 command,
                 "-c",
                 self.test_file_path,
             ]
-            with redirect_stdout(self.catcher):
-                with self.assertRaises(SystemExit):
-                    metadata(args)
+            process_status = subprocess.Popen(args, stderr=subprocess.PIPE)
+            _, stderr = process_status.communicate()
+            return stderr.decode("utf-8")
 
         def build_config_file(
             self, test_type: E2EType = E2EType.INGEST, extra_args: dict = None
         ) -> None:
-            with open(self.config_file_path) as f:
-                config_yaml = yaml.safe_load(f)
+            with open(self.config_file_path, encoding=UTF_8) as config_file:
+                config_yaml = yaml.safe_load(config_file)
                 config_yaml = self.build_yaml(config_yaml, test_type, extra_args)
-                with open(self.test_file_path, "w") as w:
-                    yaml.dump(config_yaml, w)
+                with open(self.test_file_path, "w", encoding=UTF_8) as test_file:
+                    yaml.dump(config_yaml, test_file)
 
         def retrieve_statuses(self, result):
             source_status: SourceStatus = self.extract_source_status(result)
@@ -246,14 +241,16 @@ class CliDBBase(TestCase):
             output_clean_ansi = re.compile(r"\x1b[^m]*m")
             output_clean = output_clean_ansi.sub(" ", output_clean)
             if re.match(".* Processor Status: .*", output_clean):
-                output_clean = re.findall(
-                    "Source Status: (.*?) Processor Status: .*", output_clean.strip()
+                regex = (
+                    r"Source Status:%(log)s(.*?)%(log)sProcessor Status: .*" % REGEX_AUX
                 )
+                output_clean = re.findall(regex, output_clean.strip())
             else:
-                output_clean = re.findall(
-                    "Source Status: (.*?) Sink Status: .*", output_clean.strip()
-                )
-            return SourceStatus.parse_obj(eval(output_clean[0].strip()))
+                regex = r"Source Status:%(log)s(.*?)%(log)sSink Status: .*" % REGEX_AUX
+                output_clean = re.findall(regex, output_clean.strip())
+            return SourceStatus.parse_obj(
+                eval(output_clean[0].strip())  # pylint: disable=eval-used
+            )
 
         @staticmethod
         def extract_sink_status(output) -> SinkStatus:
@@ -261,10 +258,9 @@ class CliDBBase(TestCase):
             output_clean = re.sub(" +", " ", output_clean)
             output_clean_ansi = re.compile(r"\x1b[^m]*m")
             output_clean = output_clean_ansi.sub("", output_clean)
-            output_clean = re.findall(
-                ".* Sink Status: (.*?) Workflow finished.*", output_clean.strip()
-            )[0].strip()
-            return SinkStatus.parse_obj(eval(output_clean))
+            regex = r".*Sink Status:%(log)s(.*?)%(log)sWorkflow finished.*" % REGEX_AUX
+            output_clean = re.findall(regex, output_clean.strip())[0].strip()
+            return SinkStatus.parse_obj(eval(output_clean))  # pylint: disable=eval-used
 
         @staticmethod
         @abstractmethod
@@ -344,10 +340,19 @@ class CliDBBase(TestCase):
 
         @staticmethod
         def build_yaml(config_yaml: dict, test_type: E2EType, extra_args: dict):
+            """
+            Build yaml as per E2EType
+            """
             if test_type == E2EType.PROFILER:
                 del config_yaml["source"]["sourceConfig"]["config"]
                 config_yaml["source"]["sourceConfig"] = {
-                    "config": {"type": "Profiler", "generateSampleData": True}
+                    "config": {
+                        "type": "Profiler",
+                        "generateSampleData": True,
+                        "profileSample": extra_args.get("profileSample", 1)
+                        if extra_args
+                        else 1,
+                    }
                 }
                 config_yaml["processor"] = {"type": "orm-profiler", "config": {}}
             if test_type == E2EType.INGEST_FILTER_SCHEMA:

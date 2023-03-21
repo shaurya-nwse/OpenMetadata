@@ -59,6 +59,11 @@
       "type": "boolean",
       "default": false
     },
+    "sslMode": {
+      "title": "SSL Mode",
+      "description": "SSL Mode to connect to postgres database. E.g, prefer, verify-ca etc.",
+      "type": "string"
+    },
     "connectionOptions": {
       "title": "Connection Options",
       "$ref": "../connectionBasicType.json#/definitions/connectionOptions"
@@ -77,12 +82,15 @@
     "supportsLineageExtraction": {
       "$ref": "../connectionBasicType.json#/definitions/supportsLineageExtraction"
     },
+    "supportsDBTExtraction": {
+      "$ref": "../connectionBasicType.json#/definitions/supportsDBTExtraction"
+    },
     "supportsProfiler": {
       "title": "Supports Profiler",
       "$ref": "../connectionBasicType.json#/definitions/supportsProfiler"
     },
     "supportsDatabase": {
-      "title": "Supports Profiler",
+      "title": "Supports Database",
       "$ref": "../connectionBasicType.json#/definitions/supportsDatabase"
     },
     "supportsQueryComment": {

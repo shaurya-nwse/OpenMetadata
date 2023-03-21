@@ -26,11 +26,15 @@ import static org.openmetadata.service.Entity.FIELD_EXTENSION;
 import static org.openmetadata.service.Entity.FIELD_FOLLOWERS;
 import static org.openmetadata.service.Entity.FIELD_OWNER;
 import static org.openmetadata.service.Entity.FIELD_TAGS;
+import static org.openmetadata.service.Entity.FIELD_VOTES;
+import static org.openmetadata.service.Entity.USER;
 import static org.openmetadata.service.Entity.getEntityFields;
+import static org.openmetadata.service.exception.CatalogExceptionMessage.csvNotSupported;
 import static org.openmetadata.service.util.EntityUtil.compareTagLabel;
 import static org.openmetadata.service.util.EntityUtil.entityReferenceMatch;
 import static org.openmetadata.service.util.EntityUtil.fieldAdded;
 import static org.openmetadata.service.util.EntityUtil.fieldDeleted;
+import static org.openmetadata.service.util.EntityUtil.getColumnField;
 import static org.openmetadata.service.util.EntityUtil.getExtensionField;
 import static org.openmetadata.service.util.EntityUtil.nextMajorVersion;
 import static org.openmetadata.service.util.EntityUtil.nextVersion;
@@ -55,6 +59,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiPredicate;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.json.JsonPatch;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.UriInfo;
@@ -63,14 +69,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.jdbi.v3.sqlobject.transaction.Transaction;
 import org.openmetadata.common.utils.CommonUtil;
 import org.openmetadata.schema.EntityInterface;
+import org.openmetadata.schema.api.VoteRequest;
 import org.openmetadata.schema.api.teams.CreateTeam;
+import org.openmetadata.schema.entity.classification.Tag;
 import org.openmetadata.schema.entity.data.GlossaryTerm;
 import org.openmetadata.schema.entity.data.Table;
-import org.openmetadata.schema.entity.tags.Tag;
 import org.openmetadata.schema.entity.teams.Team;
 import org.openmetadata.schema.entity.teams.User;
 import org.openmetadata.schema.type.ChangeDescription;
 import org.openmetadata.schema.type.ChangeEvent;
+import org.openmetadata.schema.type.Column;
 import org.openmetadata.schema.type.EntityHistory;
 import org.openmetadata.schema.type.EntityReference;
 import org.openmetadata.schema.type.EventType;
@@ -79,6 +87,9 @@ import org.openmetadata.schema.type.Include;
 import org.openmetadata.schema.type.ProviderType;
 import org.openmetadata.schema.type.Relationship;
 import org.openmetadata.schema.type.TagLabel;
+import org.openmetadata.schema.type.TagLabel.TagSource;
+import org.openmetadata.schema.type.Votes;
+import org.openmetadata.schema.type.csv.CsvImportResult;
 import org.openmetadata.service.Entity;
 import org.openmetadata.service.OpenMetadataApplicationConfig;
 import org.openmetadata.service.TypeRegistry;
@@ -88,7 +99,6 @@ import org.openmetadata.service.exception.UnhandledServerException;
 import org.openmetadata.service.jdbi3.CollectionDAO.EntityRelationshipRecord;
 import org.openmetadata.service.jdbi3.CollectionDAO.EntityVersionPair;
 import org.openmetadata.service.jdbi3.CollectionDAO.ExtensionRecord;
-import org.openmetadata.service.jdbi3.TableRepository.TableUpdater;
 import org.openmetadata.service.resources.tags.TagLabelCache;
 import org.openmetadata.service.security.policyevaluator.SubjectCache;
 import org.openmetadata.service.util.EntityUtil;
@@ -136,14 +146,15 @@ import org.openmetadata.service.util.ResultList;
 public abstract class EntityRepository<T extends EntityInterface> {
   private final String collectionPath;
   private final Class<T> entityClass;
-  protected final String entityType;
+  @Getter protected final String entityType;
   public final EntityDAO<T> dao;
   protected final CollectionDAO daoCollection;
-  protected final List<String> allowedFields;
+  @Getter protected final List<String> allowedFields;
   public final boolean supportsSoftDelete;
   @Getter protected final boolean supportsTags;
   @Getter protected final boolean supportsOwner;
   protected final boolean supportsFollower;
+  protected final boolean supportsVotes;
 
   /** Fields that can be updated during PATCH operation */
   @Getter private final Fields patchFields;
@@ -172,6 +183,7 @@ public abstract class EntityRepository<T extends EntityInterface> {
     this.supportsOwner = allowedFields.contains(FIELD_OWNER);
     this.supportsSoftDelete = allowedFields.contains(FIELD_DELETED);
     this.supportsFollower = allowedFields.contains(FIELD_FOLLOWERS);
+    this.supportsVotes = allowedFields.contains(FIELD_VOTES);
     Entity.registerEntity(entityClass, entityType, dao, this);
   }
 
@@ -326,13 +338,29 @@ public abstract class EntityRepository<T extends EntityInterface> {
   }
 
   @Transaction
-  public final T findByNameOrNull(String fqn, String fields, Include include) throws IOException {
+  public final T findByNameOrNull(String fqn, String fields, Include include) {
     String json = dao.findJsonByFqn(fqn, include);
-    return json == null ? null : setFieldsInternal(JsonUtils.readValue(json, entityClass), getFields(fields));
+    try {
+      return json == null ? null : setFieldsInternal(JsonUtils.readValue(json, entityClass), getFields(fields));
+    } catch (IOException e) {
+      return null;
+    }
   }
 
   @Transaction
-  public final ResultList<T> listAfter(UriInfo uriInfo, Fields fields, ListFilter filter, int limitParam, String after)
+  public final List<T> listAll(Fields fields, ListFilter filter) throws IOException {
+    // forward scrolling, if after == null then first page is being asked
+    List<String> jsons = dao.listAfter(filter, Integer.MAX_VALUE, "");
+    List<T> entities = new ArrayList<>();
+    for (String json : jsons) {
+      T entity = setFieldsInternal(JsonUtils.readValue(json, entityClass), fields);
+      entities.add(entity);
+    }
+    return entities;
+  }
+
+  @Transaction
+  public ResultList<T> listAfter(UriInfo uriInfo, Fields fields, ListFilter filter, int limitParam, String after)
       throws IOException {
     int total = dao.listCount(filter);
     List<T> entities = new ArrayList<>();
@@ -360,8 +388,8 @@ public abstract class EntityRepository<T extends EntityInterface> {
   }
 
   @Transaction
-  public final ResultList<T> listBefore(
-      UriInfo uriInfo, Fields fields, ListFilter filter, int limitParam, String before) throws IOException {
+  public ResultList<T> listBefore(UriInfo uriInfo, Fields fields, ListFilter filter, int limitParam, String before)
+      throws IOException {
     // Reverse scrolling - Get one extra result used for computing before cursor
     List<String> jsons = dao.listBefore(filter, limitParam + 1, RestUtil.decodeCursor(before));
 
@@ -560,6 +588,53 @@ public abstract class EntityRepository<T extends EntityInterface> {
     return new PutResponse<>(Status.OK, changeEvent, RestUtil.ENTITY_FIELDS_CHANGED);
   }
 
+  @Transaction
+  public PutResponse<T> updateVote(String updatedBy, UUID entityId, VoteRequest request) throws IOException {
+    // Get entity
+    T originalEntity = dao.findEntityById(entityId);
+
+    // Validate User
+    User user = daoCollection.userDAO().findEntityByName(updatedBy);
+    UUID userId = user.getId();
+    if (Boolean.TRUE.equals(user.getDeleted())) {
+      throw new IllegalArgumentException(CatalogExceptionMessage.deletedUser(userId));
+    }
+
+    ChangeDescription change = new ChangeDescription().withPreviousVersion(originalEntity.getVersion());
+
+    // Add or Delete relationship
+    if (request.getUpdatedVoteType() == VoteRequest.VoteType.UN_VOTED) {
+      deleteRelationship(userId, Entity.USER, entityId, entityType, Relationship.VOTED);
+      fieldDeleted(change, FIELD_VOTES, request.getUpdatedVoteType());
+    } else {
+      addRelationship(
+          userId,
+          entityId,
+          Entity.USER,
+          entityType,
+          Relationship.VOTED,
+          JsonUtils.pojoToJson(request.getUpdatedVoteType()),
+          false);
+      fieldAdded(change, FIELD_VOTES, request.getUpdatedVoteType());
+    }
+
+    setFieldsInternal(originalEntity, new EntityUtil.Fields(allowedFields, "votes"));
+    ChangeEvent changeEvent =
+        new ChangeEvent()
+            .withEntity(originalEntity)
+            .withChangeDescription(change)
+            .withEventType(EventType.ENTITY_UPDATED)
+            .withEntityType(entityType)
+            .withEntityId(entityId)
+            .withEntityFullyQualifiedName(originalEntity.getFullyQualifiedName())
+            .withUserName(updatedBy)
+            .withTimestamp(System.currentTimeMillis())
+            .withCurrentVersion(originalEntity.getVersion())
+            .withPreviousVersion(change.getPreviousVersion());
+
+    return new PutResponse<>(Status.OK, changeEvent, RestUtil.ENTITY_FIELDS_CHANGED);
+  }
+
   public final DeleteResponse<T> delete(String updatedBy, UUID id, boolean recursive, boolean hardDelete)
       throws IOException {
     DeleteResponse<T> response = deleteInternal(updatedBy, id, recursive, hardDelete);
@@ -584,17 +659,16 @@ public abstract class EntityRepository<T extends EntityInterface> {
     // For example ingestion pipeline deletes a pipeline in AirFlow.
   }
 
-  private DeleteResponse<T> delete(String updatedBy, String json, UUID id, boolean recursive, boolean hardDelete)
+  private DeleteResponse<T> delete(String updatedBy, T original, boolean recursive, boolean hardDelete)
       throws IOException {
-    T original = JsonUtils.readValue(json, entityClass);
     checkSystemEntityDeletion(original);
     preDelete(original);
     setFieldsInternal(original, putFields);
 
-    deleteChildren(id, recursive, hardDelete, updatedBy);
+    deleteChildren(original.getId(), recursive, hardDelete, updatedBy);
 
     String changeType;
-    T updated = JsonUtils.readValue(json, entityClass);
+    T updated = JsonUtils.readValue(JsonUtils.pojoToJson(original), entityClass);
     setFieldsInternal(updated, putFields); // we need service, database, databaseSchema to delete properly from ES.
     if (supportsSoftDelete && !hardDelete) {
       updated.setUpdatedBy(updatedBy);
@@ -615,23 +689,16 @@ public abstract class EntityRepository<T extends EntityInterface> {
   public final DeleteResponse<T> deleteInternalByName(
       String updatedBy, String name, boolean recursive, boolean hardDelete) throws IOException {
     // Validate entity
-    String json = dao.findJsonByFqn(name, ALL);
-    if (json == null) {
-      throw EntityNotFoundException.byMessage(CatalogExceptionMessage.entityNotFound(entityType, name));
-    }
-    UUID id = JsonUtils.readValue(json, entityClass).getId();
-    return delete(updatedBy, json, id, recursive, hardDelete);
+    T entity = dao.findEntityByName(name, ALL);
+    return delete(updatedBy, entity, recursive, hardDelete);
   }
 
   @Transaction
   public final DeleteResponse<T> deleteInternal(String updatedBy, UUID id, boolean recursive, boolean hardDelete)
       throws IOException {
     // Validate entity
-    String json = dao.findJsonById(id, ALL);
-    if (json == null) {
-      throw EntityNotFoundException.byMessage(CatalogExceptionMessage.entityNotFound(entityType, id));
-    }
-    return delete(updatedBy, json, id, recursive, hardDelete);
+    T entity = dao.findEntityById(id, ALL);
+    return delete(updatedBy, entity, recursive, hardDelete);
   }
 
   private void deleteChildren(UUID id, boolean recursive, boolean hardDelete, String updatedBy) throws IOException {
@@ -727,11 +794,24 @@ public abstract class EntityRepository<T extends EntityInterface> {
   }
 
   protected void store(T entity, boolean update) throws JsonProcessingException {
+    // Don't store owner, database, href and tags as JSON. Build it on the fly based on relationships
+    entity.withHref(null);
+    EntityReference owner = entity.getOwner();
+    entity.setOwner(null);
+    List<TagLabel> tags = entity.getTags();
+    entity.setTags(null);
+
     if (update) {
       dao.update(entity.getId(), JsonUtils.pojoToJson(entity));
+      LOG.info("Updated {}:{}:{}", entityType, entity.getId(), entity.getFullyQualifiedName());
     } else {
       dao.insert(entity);
+      LOG.info("Created {}:{}:{}", entityType, entity.getId(), entity.getFullyQualifiedName());
     }
+
+    // Restore the relationships
+    entity.setOwner(owner);
+    entity.setTags(tags);
   }
 
   public void validateExtension(T entity) {
@@ -842,10 +922,10 @@ public abstract class EntityRepository<T extends EntityInterface> {
   /** Apply tags {@code tagLabels} to the entity or field identified by {@code targetFQN} */
   public void applyTags(List<TagLabel> tagLabels, String targetFQN) {
     for (TagLabel tagLabel : listOrEmpty(tagLabels)) {
-      if (tagLabel.getSource() == TagLabel.TagSource.TAG) {
+      if (tagLabel.getSource() == TagSource.CLASSIFICATION) {
         Tag tag = daoCollection.tagDAO().findEntityByName(tagLabel.getTagFQN());
         tagLabel.withDescription(tag.getDescription());
-        tagLabel.setSource(TagLabel.TagSource.TAG);
+        tagLabel.setSource(TagSource.CLASSIFICATION);
       } else if (tagLabel.getSource() == TagLabel.TagSource.GLOSSARY) {
         GlossaryTerm term = daoCollection.glossaryTermDAO().findEntityByName(tagLabel.getTagFQN(), NON_DELETED);
         tagLabel.withDescription(term.getDescription());
@@ -884,12 +964,30 @@ public abstract class EntityRepository<T extends EntityInterface> {
     if (!supportsFollower || entity == null) {
       return Collections.emptyList();
     }
-    List<EntityReference> followers = new ArrayList<>();
     List<EntityRelationshipRecord> records = findFrom(entity.getId(), entityType, Relationship.FOLLOWS, Entity.USER);
-    for (EntityRelationshipRecord entityRelationshipRecord : records) {
-      followers.add(daoCollection.userDAO().findEntityReferenceById(entityRelationshipRecord.getId(), ALL));
+    return EntityUtil.populateEntityReferences(records, USER);
+  }
+
+  protected Votes getVotes(T entity) throws IOException {
+    if (!supportsVotes || entity == null) {
+      return new Votes();
     }
-    return followers;
+    List<EntityReference> upVoters = new ArrayList<>();
+    List<EntityReference> downVoters = new ArrayList<>();
+    List<EntityRelationshipRecord> records = findFrom(entity.getId(), entityType, Relationship.VOTED, Entity.USER);
+    for (EntityRelationshipRecord entityRelationshipRecord : records) {
+      VoteRequest.VoteType type = JsonUtils.readValue(entityRelationshipRecord.getJson(), VoteRequest.VoteType.class);
+      if (type == VoteRequest.VoteType.VOTED_UP) {
+        upVoters.add(daoCollection.userDAO().findEntityReferenceById(entityRelationshipRecord.getId(), ALL));
+      } else if (type == VoteRequest.VoteType.VOTED_DOWN) {
+        downVoters.add(daoCollection.userDAO().findEntityReferenceById(entityRelationshipRecord.getId(), ALL));
+      }
+    }
+    return new Votes()
+        .withUpVotes(upVoters.size())
+        .withDownVotes(downVoters.size())
+        .withUpVoters(upVoters)
+        .withDownVoters(downVoters);
   }
 
   public T withHref(UriInfo uriInfo, T entity) {
@@ -1036,7 +1134,10 @@ public abstract class EntityRepository<T extends EntityInterface> {
   public void validateUsers(List<EntityReference> entityReferences) throws IOException {
     if (entityReferences != null) {
       for (EntityReference entityReference : entityReferences) {
-        EntityReference ref = daoCollection.userDAO().findEntityReferenceById(entityReference.getId());
+        EntityReference ref =
+            entityReference.getId() != null
+                ? daoCollection.userDAO().findEntityReferenceById(entityReference.getId())
+                : daoCollection.userDAO().findEntityReferenceByName(entityReference.getFullyQualifiedName());
         EntityUtil.copy(ref, entityReference);
       }
       entityReferences.sort(EntityUtil.compareEntityReference);
@@ -1064,10 +1165,7 @@ public abstract class EntityRepository<T extends EntityInterface> {
   }
 
   public EntityReference getOwner(T entity) throws IOException {
-    if (!supportsOwner) {
-      return null;
-    }
-    return getFromEntityRef(entity.getId(), Relationship.OWNS, null, false);
+    return !supportsOwner ? null : getFromEntityRef(entity.getId(), Relationship.OWNS, null, false);
   }
 
   public EntityReference getOwner(EntityReference ref) throws IOException {
@@ -1111,10 +1209,6 @@ public abstract class EntityRepository<T extends EntityInterface> {
     return new Fields(allowedFields, fields);
   }
 
-  public final List<String> getAllowedFields() {
-    return allowedFields;
-  }
-
   public final List<String> getAllowedFieldsCopy() {
     return new ArrayList<>(allowedFields);
   }
@@ -1151,13 +1245,27 @@ public abstract class EntityRepository<T extends EntityInterface> {
     }
     // Entities can be only owned by team of type 'group'
     if (owner.getType().equals(Entity.TEAM)) {
-      Team team = Entity.getEntity(Entity.TEAM, owner.getId(), Fields.EMPTY_FIELDS, ALL);
+      Team team = Entity.getEntity(Entity.TEAM, owner.getId(), "", ALL);
       if (!team.getTeamType().equals(CreateTeam.TeamType.GROUP)) {
         throw new IllegalArgumentException(CatalogExceptionMessage.invalidTeamOwner(team.getTeamType()));
       }
       return team.getEntityReference();
     }
     return Entity.getEntityReferenceById(owner.getType(), owner.getId(), ALL);
+  }
+
+  /** Override this method to support downloading CSV functionality */
+  public String exportToCsv(String name, String user) throws IOException {
+    throw new IllegalArgumentException(csvNotSupported(entityType));
+  }
+
+  /** Load CSV provided for bulk upload */
+  public CsvImportResult importFromCsv(String name, String csv, boolean dryRun, String user) throws IOException {
+    throw new IllegalArgumentException(csvNotSupported(entityType));
+  }
+
+  public List<TagLabel> getAllTags(EntityInterface entity) {
+    return entity.getTags();
   }
 
   public enum Operation {
@@ -1186,7 +1294,7 @@ public abstract class EntityRepository<T extends EntityInterface> {
    * Common entity attributes such as description, displayName, owner, tags are handled by this class. Override {@code
    * entitySpecificUpdate()} to add additional entity specific fields to be updated.
    *
-   * @see TableUpdater#entitySpecificUpdate() for example.
+   * @see TableRepository.TableUpdater#entitySpecificUpdate() for example.
    */
   public class EntityUpdater {
     protected final T original;
@@ -1463,8 +1571,7 @@ public abstract class EntityRepository<T extends EntityInterface> {
       List<EntityReference> added = new ArrayList<>();
       List<EntityReference> deleted = new ArrayList<>();
       if (!recordListChange(field, origToRefs, updatedToRefs, added, deleted, entityReferenceMatch)) {
-        // No changes between original and updated.
-        return;
+        return; // No changes between original and updated.
       }
       // Remove relationships from original
       deleteFrom(fromId, fromEntityType, relationshipType, toEntityType);
@@ -1477,6 +1584,28 @@ public abstract class EntityRepository<T extends EntityInterface> {
       }
       updatedToRefs.sort(EntityUtil.compareEntityReference);
       origToRefs.sort(EntityUtil.compareEntityReference);
+    }
+
+    public final void updateToRelationship(
+        String field,
+        String fromEntityType,
+        UUID fromId,
+        Relationship relationshipType,
+        String toEntityType,
+        EntityReference origToRef,
+        EntityReference updatedToRef,
+        boolean bidirectional)
+        throws JsonProcessingException {
+      if (!recordChange(field, origToRef, updatedToRef, true, entityReferenceMatch)) {
+        return; // No changes between original and updated.
+      }
+      // Remove relationships from original
+      deleteFrom(fromId, fromEntityType, relationshipType, toEntityType);
+      if (bidirectional) {
+        deleteTo(fromId, fromEntityType, relationshipType, toEntityType);
+      }
+      // Add relationships from updated
+      addRelationship(fromId, updatedToRef.getId(), fromEntityType, toEntityType, relationshipType, bidirectional);
     }
 
     /**
@@ -1496,8 +1625,7 @@ public abstract class EntityRepository<T extends EntityInterface> {
       List<EntityReference> added = new ArrayList<>();
       List<EntityReference> deleted = new ArrayList<>();
       if (!recordListChange(field, originFromRefs, updatedFromRefs, added, deleted, entityReferenceMatch)) {
-        // No changes between original and updated.
-        return;
+        return; // No changes between original and updated.
       }
       // Remove relationships from original
       deleteTo(toId, toEntityType, relationshipType, fromEntityType);
@@ -1508,6 +1636,25 @@ public abstract class EntityRepository<T extends EntityInterface> {
       }
       updatedFromRefs.sort(EntityUtil.compareEntityReference);
       originFromRefs.sort(EntityUtil.compareEntityReference);
+    }
+
+    public final void updateFromRelationship(
+        String field,
+        String fromEntityType,
+        EntityReference originFromRef,
+        EntityReference updatedFromRef,
+        Relationship relationshipType,
+        String toEntityType,
+        UUID toId)
+        throws JsonProcessingException {
+      if (!recordChange(field, originFromRef, updatedFromRef, true, entityReferenceMatch)) {
+        return; // No changes between original and updated.
+      }
+      // Remove relationships from original
+      deleteTo(toId, toEntityType, relationshipType, fromEntityType);
+
+      // Add relationships from updated
+      addRelationship(updatedFromRef.getId(), toId, fromEntityType, toEntityType, relationshipType);
     }
 
     public final void storeUpdate() throws IOException {
@@ -1533,6 +1680,134 @@ public abstract class EntityRepository<T extends EntityInterface> {
 
     public final boolean updatedByBot() {
       return Boolean.TRUE.equals(updatingUser.getIsBot());
+    }
+  }
+
+  /** Handle column-specific updates for entities such as Tables, Containers' dataModel or Dashboard Model Entities. */
+  abstract class ColumnEntityUpdater extends EntityUpdater {
+
+    public ColumnEntityUpdater(T original, T updated, Operation operation) {
+      super(original, updated, operation);
+    }
+
+    public void updateColumns(
+        String fieldName,
+        List<Column> origColumns,
+        List<Column> updatedColumns,
+        BiPredicate<Column, Column> columnMatch)
+        throws IOException {
+      List<Column> deletedColumns = new ArrayList<>();
+      List<Column> addedColumns = new ArrayList<>();
+      recordListChange(fieldName, origColumns, updatedColumns, addedColumns, deletedColumns, columnMatch);
+      // carry forward tags and description if deletedColumns matches added column
+      Map<String, Column> addedColumnMap =
+          addedColumns.stream().collect(Collectors.toMap(Column::getName, Function.identity()));
+
+      for (Column deleted : deletedColumns) {
+        if (addedColumnMap.containsKey(deleted.getName())) {
+          Column addedColumn = addedColumnMap.get(deleted.getName());
+          if (nullOrEmpty(addedColumn.getDescription())) {
+            addedColumn.setDescription(deleted.getDescription());
+          }
+          if (nullOrEmpty(addedColumn.getTags()) && nullOrEmpty(deleted.getTags())) {
+            addedColumn.setTags(deleted.getTags());
+          }
+        }
+      }
+
+      // Delete tags related to deleted columns
+      deletedColumns.forEach(
+          deleted -> daoCollection.tagUsageDAO().deleteTagsByTarget(deleted.getFullyQualifiedName()));
+
+      // Add tags related to newly added columns
+      for (Column added : addedColumns) {
+        applyTags(added.getTags(), added.getFullyQualifiedName());
+      }
+
+      // Carry forward the user generated metadata from existing columns to new columns
+      for (Column updated : updatedColumns) {
+        // Find stored column matching name, data type and ordinal position
+        Column stored = origColumns.stream().filter(c -> columnMatch.test(c, updated)).findAny().orElse(null);
+        if (stored == null) { // New column added
+          continue;
+        }
+
+        updateColumnDescription(stored, updated);
+        updateColumnDisplayName(stored, updated);
+        updateColumnDataLength(stored, updated);
+        updateColumnPrecision(stored, updated);
+        updateColumnScale(stored, updated);
+        updateTags(
+            stored.getFullyQualifiedName(),
+            EntityUtil.getFieldName(fieldName, updated.getName(), FIELD_TAGS),
+            stored.getTags(),
+            updated.getTags());
+        updateColumnConstraint(stored, updated);
+
+        if (updated.getChildren() != null && stored.getChildren() != null) {
+          String childrenFieldName = EntityUtil.getFieldName(fieldName, updated.getName());
+          updateColumns(childrenFieldName, stored.getChildren(), updated.getChildren(), columnMatch);
+        }
+      }
+
+      majorVersionChange = majorVersionChange || !deletedColumns.isEmpty();
+    }
+
+    private void updateColumnDescription(Column origColumn, Column updatedColumn) throws JsonProcessingException {
+      if (operation.isPut() && !nullOrEmpty(origColumn.getDescription()) && updatedByBot()) {
+        // Revert the non-empty task description if being updated by a bot
+        updatedColumn.setDescription(origColumn.getDescription());
+        return;
+      }
+      String columnField = getColumnField(original, origColumn, FIELD_DESCRIPTION);
+      recordChange(columnField, origColumn.getDescription(), updatedColumn.getDescription());
+    }
+
+    private void updateColumnDisplayName(Column origColumn, Column updatedColumn) throws JsonProcessingException {
+      if (operation.isPut() && !nullOrEmpty(origColumn.getDescription()) && updatedByBot()) {
+        // Revert the non-empty task description if being updated by a bot
+        updatedColumn.setDisplayName(origColumn.getDisplayName());
+        return;
+      }
+      String columnField = getColumnField(original, origColumn, FIELD_DISPLAY_NAME);
+      recordChange(columnField, origColumn.getDisplayName(), updatedColumn.getDisplayName());
+    }
+
+    private void updateColumnConstraint(Column origColumn, Column updatedColumn) throws JsonProcessingException {
+      String columnField = getColumnField(original, origColumn, "constraint");
+      recordChange(columnField, origColumn.getConstraint(), updatedColumn.getConstraint());
+    }
+
+    protected void updateColumnDataLength(Column origColumn, Column updatedColumn) throws JsonProcessingException {
+      String columnField = getColumnField(original, origColumn, "dataLength");
+      boolean updated = recordChange(columnField, origColumn.getDataLength(), updatedColumn.getDataLength());
+      if (updated
+          && (origColumn.getDataLength() == null || updatedColumn.getDataLength() < origColumn.getDataLength())) {
+        // The data length of a column was reduced or added. Treat it as backward-incompatible change
+        majorVersionChange = true;
+      }
+    }
+
+    private void updateColumnPrecision(Column origColumn, Column updatedColumn) throws JsonProcessingException {
+      String columnField = getColumnField(original, origColumn, "precision");
+      boolean updated = recordChange(columnField, origColumn.getPrecision(), updatedColumn.getPrecision());
+      if (origColumn.getPrecision() != null
+          && updated
+          && updatedColumn.getPrecision() < origColumn.getPrecision()) { // Previously precision was set
+        // The precision was reduced. Treat it as backward-incompatible change
+        majorVersionChange = true;
+      }
+    }
+
+    private void updateColumnScale(Column origColumn, Column updatedColumn) throws JsonProcessingException {
+      String columnField = getColumnField(original, origColumn, "scale");
+      boolean updated = recordChange(columnField, origColumn.getScale(), updatedColumn.getScale());
+      if (origColumn.getScale() != null
+          && updated
+          && updatedColumn.getScale() < origColumn.getScale()) { // Previously scale was set
+        // The scale was reduced. Treat it as backward-incompatible change
+        majorVersionChange = true;
+      }
     }
   }
 }

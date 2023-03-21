@@ -22,7 +22,9 @@ from cryptography.hazmat.primitives import serialization
 from metadata.generated.schema.security.credentials.gcsCredentials import (
     GCSCredentials,
     GCSCredentialsPath,
-    GCSValues,
+)
+from metadata.generated.schema.security.credentials.gcsValues import (
+    GcsCredentialsValues,
 )
 from metadata.utils.logger import utils_logger
 
@@ -69,9 +71,9 @@ def create_credential_tmp_file(credentials: dict) -> str:
         return temp_file.name
 
 
-def build_google_credentials_dict(gcs_values: GCSValues) -> Dict[str, str]:
+def build_google_credentials_dict(gcs_values: GcsCredentialsValues) -> Dict[str, str]:
     """
-    Given GCSValues, build a dictionary as the JSON file
+    Given GcsCredentialsValues, build a dictionary as the JSON file
     downloaded from GCS with the service_account
     :param gcs_values: GCS credentials
     :return: Dictionary with credentials
@@ -100,9 +102,6 @@ def set_google_credentials(gcs_credentials: GCSCredentials) -> None:
     Set GCS credentials environment variable
     :param gcs_credentials: GCSCredentials
     """
-    if os.environ.get(GOOGLE_CREDENTIALS):
-        return
-
     if isinstance(gcs_credentials.gcsConfig, GCSCredentialsPath):
         os.environ[GOOGLE_CREDENTIALS] = str(gcs_credentials.gcsConfig.__root__)
         return
@@ -113,7 +112,7 @@ def set_google_credentials(gcs_credentials: GCSCredentials) -> None:
         )
         return
 
-    if isinstance(gcs_credentials.gcsConfig, GCSValues):
+    if isinstance(gcs_credentials.gcsConfig, GcsCredentialsValues):
         if (
             gcs_credentials.gcsConfig.projectId
             and not gcs_credentials.gcsConfig.privateKey

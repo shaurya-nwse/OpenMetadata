@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -12,70 +12,54 @@
  */
 
 import {
-  faSortAmountDownAlt,
-  faSortAmountUpAlt,
-} from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { Card, Col, Row, Tabs } from 'antd';
-import { AxiosError } from 'axios';
+  SortAscendingOutlined,
+  SortDescendingOutlined,
+} from '@ant-design/icons';
+import { Button, Card, Col, Row, Space, Tabs } from 'antd';
+import FacetFilter from 'components/common/facetfilter/FacetFilter';
+import SearchedData from 'components/searched-data/SearchedData';
+import { SORT_ORDER } from 'enums/common.enum';
 import unique from 'fork-ts-checker-webpack-plugin/lib/utils/array/unique';
 import {
   isEmpty,
   isNil,
   isNumber,
+  isUndefined,
   lowerCase,
   noop,
   omit,
-  toLower,
   toUpper,
 } from 'lodash';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
-import { getTableDetailsByFQN } from '../../axiosAPIs/tableAPI';
-import { getListTestCase } from '../../axiosAPIs/testAPI';
-import FacetFilter from '../../components/common/facetfilter/FacetFilter';
-import SearchedData from '../../components/searched-data/SearchedData';
-import { API_RES_MAX_SIZE, ENTITY_PATH } from '../../constants/constants';
+import { ENTITY_PATH } from '../../constants/constants';
 import { tabsInfo } from '../../constants/explore.constants';
-import { INITIAL_TEST_RESULT_SUMMARY } from '../../constants/profiler.constant';
-import { EntityType, TabSpecificField } from '../../enums/entity.enum';
 import { SearchIndex } from '../../enums/search.enum';
-import { Table } from '../../generated/entity/data/table';
-import { Include } from '../../generated/type/include';
 import { getDropDownItems } from '../../utils/AdvancedSearchUtils';
-import {
-  formatNumberWithComma,
-  formTwoDigitNmber,
-  getCountBadge,
-} from '../../utils/CommonUtils';
-import { updateTestResults } from '../../utils/DataQualityAndProfilerUtils';
-import { generateEntityLink } from '../../utils/TableUtils';
-import { showErrorToast } from '../../utils/ToastUtils';
+import { getCountBadge } from '../../utils/CommonUtils';
 import { FacetFilterProps } from '../common/facetfilter/facetFilter.interface';
 import PageLayoutV1 from '../containers/PageLayoutV1';
 import Loader from '../Loader/Loader';
-import {
-  OverallTableSummeryType,
-  TableTestsType,
-} from '../TableProfiler/TableProfiler.interface';
-import { AdvancedSearchModal } from './AdvanceSearchModal.component';
+import ExploreSkeleton from '../Skeleton/Explore/ExploreLeftPanelSkeleton.component';
+import { useAdvanceSearch } from './AdvanceSearchProvider/AdvanceSearchProvider.component';
 import AppliedFilterText from './AppliedFilterText/AppliedFilterText';
 import EntitySummaryPanel from './EntitySummaryPanel/EntitySummaryPanel.component';
 import {
+  EntityDetailsObjectInterface,
+  EntityUnion,
   ExploreProps,
   ExploreQuickFilterField,
   ExploreSearchIndex,
   ExploreSearchIndexKey,
 } from './explore.interface';
+import './Explore.style.less';
 import ExploreQuickFilters from './ExploreQuickFilters';
 import SortingDropDown from './SortingDropDown';
 
 const Explore: React.FC<ExploreProps> = ({
   searchResults,
   tabCounts,
-  advancedSearchJsonTree,
-  onChangeAdvancedSearchJsonTree,
   onChangeAdvancedSearchQueryFilter,
   postFilter,
   onChangePostFilter,
@@ -91,29 +75,55 @@ const Explore: React.FC<ExploreProps> = ({
   onChangePage = noop,
   loading,
 }) => {
+  const { t } = useTranslation();
   const { tab } = useParams<{ tab: string }>();
-  const [showAdvanceSearchModal, setShowAdvanceSearchModal] = useState(false);
 
   const [selectedQuickFilters, setSelectedQuickFilters] = useState<
     ExploreQuickFilterField[]
   >([] as ExploreQuickFilterField[]);
-  const { t } = useTranslation();
   const [showSummaryPanel, setShowSummaryPanel] = useState(false);
-  const [entityDetails, setEntityDetails] = useState<Table>();
-  const [tableTests, setTableTests] = useState<TableTestsType>({
-    tests: [],
-    results: INITIAL_TEST_RESULT_SUMMARY,
-  });
+  const [entityDetails, setEntityDetails] =
+    useState<{ details: EntityUnion; entityType: string }>();
 
-  const [appliedFilterSQLFormat, setAppliedFilterSQLFormat] =
-    useState<string>('');
-
-  const handleAppliedFilterChange = (value: string) =>
-    setAppliedFilterSQLFormat(value);
+  const { toggleModal, sqlQuery } = useAdvanceSearch();
 
   const handleClosePanel = () => {
     setShowSummaryPanel(false);
   };
+
+  const isAscSortOrder = useMemo(
+    () => sortOrder === SORT_ORDER.ASC,
+    [sortOrder]
+  );
+  const sortProps = useMemo(
+    () => ({
+      className: 'text-base text-primary',
+      'data-testid': 'last-updated',
+    }),
+    []
+  );
+
+  const tabItems = useMemo(
+    () =>
+      Object.entries(tabsInfo).map(([tabSearchIndex, tabDetail]) => ({
+        key: tabSearchIndex,
+        label: (
+          <div data-testid={`${lowerCase(tabDetail.label)}-tab`}>
+            {tabDetail.label}
+            <span className="p-l-xs ">
+              {!isNil(tabCounts)
+                ? getCountBadge(
+                    tabCounts[tabSearchIndex as ExploreSearchIndex],
+                    '',
+                    tabSearchIndex === searchIndex
+                  )
+                : getCountBadge()}
+            </span>
+          </div>
+        ),
+      })),
+    [tabsInfo, tabCounts]
+  );
 
   // get entity active tab by URL params
   const defaultActiveTab = useMemo(() => {
@@ -149,98 +159,13 @@ const Explore: React.FC<ExploreProps> = ({
     }
   };
 
-  const overallSummery: OverallTableSummeryType[] = useMemo(() => {
-    return [
-      {
-        title: 'Row Count',
-        value: formatNumberWithComma(entityDetails?.profile?.rowCount ?? 0),
-      },
-      {
-        title: 'Column Count',
-        value: entityDetails?.profile?.columnCount ?? 0,
-      },
-      {
-        title: 'Table Sample %',
-        value: `${entityDetails?.profile?.profileSample ?? 100}%`,
-      },
-      {
-        title: 'Tests Passed',
-        value: formTwoDigitNmber(tableTests.results.success),
-        className: 'success',
-      },
-      {
-        title: 'Tests Aborted',
-        value: formTwoDigitNmber(tableTests.results.aborted),
-        className: 'aborted',
-      },
-      {
-        title: 'Tests Failed',
-        value: formTwoDigitNmber(tableTests.results.failed),
-        className: 'failed',
-      },
-    ];
-  }, [entityDetails, tableTests]);
-
-  const fetchProfilerData = async (source: Table) => {
-    try {
-      const res = await getTableDetailsByFQN(
-        encodeURIComponent(source?.fullyQualifiedName || ''),
-        `${TabSpecificField.TABLE_PROFILE},${TabSpecificField.TABLE_QUERIES}`
-      );
-      const { profile, tableQueries } = res;
-      setEntityDetails((prev) => {
-        if (prev) {
-          return { ...prev, profile, tableQueries };
-        } else {
-          return {} as Table;
-        }
-      });
-    } catch {
-      showErrorToast(
-        t('server.entity-fetch-error', {
-          entity: `profile details for table ${source?.name || ''}`,
-        })
-      );
-    }
-  };
-
-  const fetchAllTests = async (source: Table) => {
-    try {
-      const { data } = await getListTestCase({
-        fields: 'testCaseResult,entityLink,testDefinition,testSuite',
-        entityLink: generateEntityLink(source?.fullyQualifiedName || ''),
-        includeAllTests: true,
-        limit: API_RES_MAX_SIZE,
-        include: Include.Deleted,
-      });
-      const tableTests: TableTestsType = {
-        tests: [],
-        results: { ...INITIAL_TEST_RESULT_SUMMARY },
-      };
-      data.forEach((test) => {
-        if (test.entityFQN === source?.fullyQualifiedName) {
-          tableTests.tests.push(test);
-
-          updateTestResults(
-            tableTests.results,
-            test.testCaseResult?.testCaseStatus || ''
-          );
-
-          return;
-        }
-      });
-      setTableTests(tableTests);
-    } catch (error) {
-      showErrorToast(error as AxiosError);
-    }
-  };
-
-  const handleSummaryPanelDisplay = (source: Table) => {
-    setShowSummaryPanel(true);
-    fetchAllTests(source);
-    fetchProfilerData(source);
-    setEntityDetails(source);
-  };
+  const handleSummaryPanelDisplay = useCallback(
+    (details: EntityUnion, entityType: string) => {
+      setShowSummaryPanel(true);
+      setEntityDetails({ details, entityType });
+    },
+    []
+  );
 
   const handleAdvanceSearchFilter = (data: ExploreQuickFilterField[]) => {
     const terms = [] as Array<Record<string, unknown>>;
@@ -248,7 +173,7 @@ const Explore: React.FC<ExploreProps> = ({
     data.forEach((filter) => {
       filter.value?.map((val) => {
         if (filter.key) {
-          terms.push({ term: { [filter.key]: val } });
+          terms.push({ term: { [filter.key]: val.key } });
         }
       });
     });
@@ -257,7 +182,7 @@ const Explore: React.FC<ExploreProps> = ({
       isEmpty(terms)
         ? undefined
         : {
-            query: { bool: { must: terms } },
+            query: { bool: { should: terms } },
           }
     );
   };
@@ -295,153 +220,136 @@ const Explore: React.FC<ExploreProps> = ({
     const dropdownItems = getDropDownItems(searchIndex);
 
     setSelectedQuickFilters(
-      dropdownItems.map((item) => ({ ...item, value: undefined }))
+      dropdownItems.map((item) => ({ ...item, value: [] }))
     );
   }, [searchIndex]);
 
+  useEffect(() => {
+    if (
+      !isUndefined(searchResults) &&
+      searchResults?.hits?.hits[0] &&
+      searchResults?.hits?.hits[0]._index === searchIndex
+    ) {
+      handleSummaryPanelDisplay(
+        searchResults?.hits?.hits[0]._source as EntityUnion,
+        tab
+      );
+    } else {
+      setShowSummaryPanel(false);
+      setEntityDetails(undefined);
+    }
+  }, [tab, searchResults]);
+
   return (
     <PageLayoutV1
+      className="explore-page-container"
       leftPanel={
         <Card
           className="page-layout-v1-left-panel page-layout-v1-vertical-scroll"
           data-testid="data-summary-container">
-          <FacetFilter
-            aggregations={omit(searchResults?.aggregations, 'entityType')}
-            filters={postFilter}
-            showDeleted={showDeleted}
-            onChangeShowDeleted={onChangeShowDeleted}
-            onClearFilter={onChangePostFilter}
-            onSelectHandler={handleFacetFilterChange}
-          />
+          <ExploreSkeleton loading={Boolean(loading)}>
+            <FacetFilter
+              aggregations={omit(searchResults?.aggregations, 'entityType')}
+              filters={postFilter}
+              showDeleted={showDeleted}
+              onChangeShowDeleted={onChangeShowDeleted}
+              onClearFilter={onChangePostFilter}
+              onSelectHandler={handleFacetFilterChange}
+            />
+          </ExploreSkeleton>
         </Card>
-      }>
+      }
+      pageTitle={t('label.explore')}>
       <Tabs
         defaultActiveKey={defaultActiveTab}
+        items={tabItems}
         size="small"
         tabBarExtraContent={
-          <div className="tw-flex">
+          <Space align="center" size={4}>
             <SortingDropDown
               fieldList={tabsInfo[searchIndex].sortingFields}
               handleFieldDropDown={onChangeSortValue}
               sortField={sortValue}
             />
-
-            <div className="tw-flex">
-              {sortOrder === 'asc' ? (
-                <button
-                  className="tw-mt-2"
-                  onClick={() => onChangeSortOder('desc')}>
-                  <FontAwesomeIcon
-                    className="tw-text-base tw-text-primary"
-                    data-testid="last-updated"
-                    icon={faSortAmountUpAlt}
-                  />
-                </button>
+            <Button
+              className="p-0"
+              size="small"
+              type="text"
+              onClick={() =>
+                onChangeSortOder(
+                  isAscSortOrder ? SORT_ORDER.DESC : SORT_ORDER.ASC
+                )
+              }>
+              {isAscSortOrder ? (
+                <SortAscendingOutlined {...sortProps} />
               ) : (
-                <button
-                  className="tw-mt-2"
-                  onClick={() => onChangeSortOder('asc')}>
-                  <FontAwesomeIcon
-                    className="tw-text-base tw-text-primary"
-                    data-testid="last-updated"
-                    icon={faSortAmountDownAlt}
-                  />
-                </button>
+                <SortDescendingOutlined {...sortProps} />
               )}
-            </div>
-          </div>
+            </Button>
+          </Space>
         }
         onChange={(tab) => {
           tab && onChangeSearchIndex(tab as ExploreSearchIndex);
           setShowSummaryPanel(false);
-        }}>
-        {Object.entries(tabsInfo).map(([tabSearchIndex, tabDetail]) => (
-          <Tabs.TabPane
-            key={tabSearchIndex}
-            tab={
-              <div data-testid={`${lowerCase(tabDetail.label)}-tab`}>
-                {tabDetail.label}
-                <span className="p-l-xs ">
-                  {!isNil(tabCounts)
-                    ? getCountBadge(
-                        tabCounts[tabSearchIndex as ExploreSearchIndex],
-                        '',
-                        tabSearchIndex === searchIndex
-                      )
-                    : getCountBadge()}
-                </span>
-              </div>
-            }
-          />
-        ))}
-      </Tabs>
+        }}
+      />
 
-      <div
-        style={{
-          marginRight: showSummaryPanel ? '390px' : '',
-        }}>
-        <Row gutter={[16, 16]}>
-          <Col span={24}>
-            <ExploreQuickFilters
-              fields={selectedQuickFilters}
-              index={searchIndex}
-              onAdvanceSearch={() => setShowAdvanceSearchModal(true)}
-              onFieldValueSelect={handleAdvanceFieldValueSelect}
-            />
-          </Col>
-          {appliedFilterSQLFormat && (
+      <Row gutter={[8, 0]} wrap={false}>
+        <Col className="searched-data-container" flex="auto">
+          <Row gutter={[16, 16]}>
             <Col span={24}>
-              <AppliedFilterText
-                filterText={appliedFilterSQLFormat}
-                onEdit={() => setShowAdvanceSearchModal(true)}
+              <ExploreQuickFilters
+                fields={selectedQuickFilters}
+                index={searchIndex}
+                onAdvanceSearch={() => toggleModal(true)}
+                onFieldValueSelect={handleAdvanceFieldValueSelect}
               />
             </Col>
-          )}
-
-          <Col span={24}>
-            {!loading ? (
-              <SearchedData
-                isFilterSelected
-                showResultCount
-                currentPage={page}
-                data={searchResults?.hits.hits ?? []}
-                handleSummaryPanelDisplay={
-                  tab === toLower(EntityType.TABLE)
-                    ? handleSummaryPanelDisplay
-                    : undefined
-                }
-                paginate={(value) => {
-                  if (isNumber(value)) {
-                    onChangePage(value);
-                  } else if (!isNaN(Number.parseInt(value))) {
-                    onChangePage(Number.parseInt(value));
-                  }
-                }}
-                totalValue={searchResults?.hits.total.value ?? 0}
-              />
-            ) : (
-              <Loader />
+            {sqlQuery && (
+              <Col span={24}>
+                <AppliedFilterText
+                  filterText={sqlQuery}
+                  onEdit={() => toggleModal(true)}
+                />
+              </Col>
             )}
+
+            <Col span={24}>
+              {!loading ? (
+                <SearchedData
+                  isFilterSelected
+                  showResultCount
+                  currentPage={page}
+                  data={searchResults?.hits.hits ?? []}
+                  handleSummaryPanelDisplay={handleSummaryPanelDisplay}
+                  isSummaryPanelVisible={showSummaryPanel}
+                  paginate={(value) => {
+                    if (isNumber(value)) {
+                      onChangePage(value);
+                    } else if (!isNaN(Number.parseInt(value))) {
+                      onChangePage(Number.parseInt(value));
+                    }
+                  }}
+                  selectedEntityId={entityDetails?.details.id || ''}
+                  totalValue={searchResults?.hits.total.value ?? 0}
+                />
+              ) : (
+                <Loader />
+              )}
+            </Col>
+          </Row>
+        </Col>
+        {showSummaryPanel && (
+          <Col flex="400px">
+            <EntitySummaryPanel
+              entityDetails={
+                entityDetails || ({} as EntityDetailsObjectInterface)
+              }
+              handleClosePanel={handleClosePanel}
+            />
           </Col>
-        </Row>
-      </div>
-      {tab === toLower(EntityType.TABLE) && (
-        <EntitySummaryPanel
-          entityDetails={entityDetails || ({} as Table)}
-          handleClosePanel={handleClosePanel}
-          overallSummery={overallSummery}
-          showPanel={showSummaryPanel}
-        />
-      )}
-      <AdvancedSearchModal
-        jsonTree={advancedSearchJsonTree}
-        searchIndex={searchIndex}
-        visible={showAdvanceSearchModal}
-        onAppliedFilterChange={handleAppliedFilterChange}
-        onCancel={() => setShowAdvanceSearchModal(false)}
-        onChangeJsonTree={onChangeAdvancedSearchJsonTree}
-        onSubmit={onChangeAdvancedSearchQueryFilter}
-      />
+        )}
+      </Row>
     </PageLayoutV1>
   );
 };

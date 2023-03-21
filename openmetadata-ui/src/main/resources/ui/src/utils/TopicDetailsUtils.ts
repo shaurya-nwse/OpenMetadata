@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,8 +11,12 @@
  *  limitations under the License.
  */
 
+import { TopicConfigObjectInterface } from 'components/TopicDetails/TopicDetails.interface';
 import { t } from 'i18next';
+import { isUndefined } from 'lodash';
 import { TabSpecificField } from '../enums/entity.enum';
+import { Topic } from '../generated/entity/data/topic';
+import { sortTagsCaseInsensitive } from './CommonUtils';
 
 export const topicDetailsTabs = [
   {
@@ -39,7 +43,7 @@ export const topicDetailsTabs = [
     field: TabSpecificField.LINEAGE,
   },
   {
-    name: t('label.custom-properties'),
+    name: t('label.custom-property-plural'),
     path: 'custom_properties',
   },
 ];
@@ -76,4 +80,42 @@ export const getCurrentTopicTab = (tab: string) => {
   }
 
   return currentTab;
+};
+
+export const getConfigObject = (
+  topicDetails: Topic
+): TopicConfigObjectInterface => {
+  return {
+    Partitions: topicDetails.partitions,
+    'Replication Factor': topicDetails.replicationFactor,
+    'Retention Size': topicDetails.retentionSize,
+    'CleanUp Policies': topicDetails.cleanupPolicies,
+    'Max Message Size': topicDetails.maximumMessageSize,
+    'Schema Type': topicDetails.messageSchema?.schemaType,
+  };
+};
+
+export const getFormattedTopicDetails = (topicDetails: Topic): Topic => {
+  if (
+    !isUndefined(topicDetails.messageSchema) &&
+    !isUndefined(topicDetails.messageSchema?.schemaFields)
+  ) {
+    // Sorting tags as the response of PATCH request does not return the sorted order
+    // of tags, but is stored in sorted manner in the database
+    // which leads to wrong PATCH payload sent after further tags removal
+    const schemaFields = topicDetails.messageSchema.schemaFields.map(
+      (schemaField) =>
+        isUndefined(schemaField.tags)
+          ? schemaField
+          : { ...schemaField, tags: sortTagsCaseInsensitive(schemaField.tags) }
+    );
+
+    return {
+      ...topicDetails,
+      tags: topicDetails.tags ?? [],
+      messageSchema: { ...topicDetails.messageSchema, schemaFields },
+    };
+  } else {
+    return { ...topicDetails, tags: topicDetails.tags ?? [] };
+  }
 };

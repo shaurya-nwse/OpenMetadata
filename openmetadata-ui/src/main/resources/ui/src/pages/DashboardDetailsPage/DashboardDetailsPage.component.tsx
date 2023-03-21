@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -12,43 +12,27 @@
  */
 
 import { AxiosError } from 'axios';
+import ErrorPlaceHolder from 'components/common/error-with-placeholder/ErrorPlaceHolder';
+import { TitleBreadcrumbProps } from 'components/common/title-breadcrumb/title-breadcrumb.interface';
+import DashboardDetails from 'components/DashboardDetails/DashboardDetails.component';
+import Loader from 'components/Loader/Loader';
+import { usePermissionProvider } from 'components/PermissionProvider/PermissionProvider';
+import { ResourceEntity } from 'components/PermissionProvider/PermissionProvider.interface';
 import { compare, Operation } from 'fast-json-patch';
-import { isEmpty, isUndefined, omitBy } from 'lodash';
-import {
-  EntityFieldThreadCount,
-  EntityTags,
-  LeafNodes,
-  LineagePos,
-  LoadingNodeState,
-} from 'Models';
+import { isUndefined, omitBy } from 'lodash';
+import { EntityTags } from 'Models';
 import React, { useEffect, useState } from 'react';
 import { useHistory, useParams } from 'react-router-dom';
-import AppState from '../../AppState';
-import { getChartById, updateChart } from '../../axiosAPIs/chartAPI';
+import { updateChart } from 'rest/chartAPI';
 import {
   addFollower,
   getDashboardByFqn,
   patchDashboardDetails,
   removeFollower,
-} from '../../axiosAPIs/dashboardAPI';
-import {
-  getAllFeeds,
-  postFeedById,
-  postThread,
-} from '../../axiosAPIs/feedsAPI';
-import { getLineageByFQN } from '../../axiosAPIs/lineageAPI';
-import { addLineage, deleteLineageEdge } from '../../axiosAPIs/miscAPI';
-import { getServiceByFQN } from '../../axiosAPIs/serviceAPI';
-import ErrorPlaceHolder from '../../components/common/error-with-placeholder/ErrorPlaceHolder';
-import { TitleBreadcrumbProps } from '../../components/common/title-breadcrumb/title-breadcrumb.interface';
-import DashboardDetails from '../../components/DashboardDetails/DashboardDetails.component';
-import {
-  Edge,
-  EdgeData,
-} from '../../components/EntityLineage/EntityLineage.interface';
-import Loader from '../../components/Loader/Loader';
-import { usePermissionProvider } from '../../components/PermissionProvider/PermissionProvider';
-import { ResourceEntity } from '../../components/PermissionProvider/PermissionProvider.interface';
+} from 'rest/dashboardAPI';
+import { getAllFeeds, postFeedById, postThread } from 'rest/feedsAPI';
+import { getServiceByFQN } from 'rest/serviceAPI';
+import AppState from '../../AppState';
 import {
   getDashboardDetailsPath,
   getServiceDetailsPath,
@@ -63,25 +47,25 @@ import { Chart } from '../../generated/entity/data/chart';
 import { Dashboard } from '../../generated/entity/data/dashboard';
 import { Post, Thread, ThreadType } from '../../generated/entity/feed/thread';
 import { Connection } from '../../generated/entity/services/dashboardService';
-import { EntityLineage } from '../../generated/type/entityLineage';
 import { EntityReference } from '../../generated/type/entityReference';
 import { Paging } from '../../generated/type/paging';
 import { TagLabel } from '../../generated/type/tagLabel';
+import { EntityFieldThreadCount } from '../../interface/feed.interface';
 import jsonData from '../../jsons/en';
 import {
   addToRecentViewed,
   getCurrentUserId,
   getEntityMissingError,
-  getEntityName,
   getFeedCounts,
 } from '../../utils/CommonUtils';
 import {
   dashboardDetailsTabs,
   defaultFields,
+  fetchCharts,
   getCurrentDashboardTab,
   sortTagsForCharts,
 } from '../../utils/DashboardDetailsUtils';
-import { getEntityFeedLink, getEntityLineage } from '../../utils/EntityUtils';
+import { getEntityFeedLink, getEntityName } from '../../utils/EntityUtils';
 import { deletePost, updateThreadData } from '../../utils/FeedUtils';
 import { DEFAULT_ENTITY_PERMISSION } from '../../utils/PermissionsUtils';
 import { serviceTypeLogo } from '../../utils/ServiceUtils';
@@ -117,15 +101,6 @@ const DashboardDetailsPage = () => {
   const [slashedDashboardName, setSlashedDashboardName] = useState<
     TitleBreadcrumbProps['titleLinks']
   >([]);
-  const [entityLineage, setEntityLineage] = useState<EntityLineage>(
-    {} as EntityLineage
-  );
-  const [isLineageLoading, setIsLineageLoading] = useState<boolean>(false);
-  const [leafNodes, setLeafNodes] = useState<LeafNodes>({} as LeafNodes);
-  const [isNodeLoading, setNodeLoading] = useState<LoadingNodeState>({
-    id: undefined,
-    state: false,
-  });
   const [currentVersion, setCurrentVersion] = useState<string>();
   const [deleted, setDeleted] = useState<boolean>(false);
   const [isError, setIsError] = useState(false);
@@ -230,96 +205,6 @@ const DashboardDetailsPage = () => {
     );
 
     return patchDashboardDetails(dashboardId, jsonPatch);
-  };
-
-  const fetchCharts = async (charts: Dashboard['charts']) => {
-    let chartsData: ChartType[] = [];
-    let promiseArr: Array<Promise<ChartType>> = [];
-    if (charts?.length) {
-      promiseArr = charts.map((chart) => getChartById(chart.id, ['tags']));
-      await Promise.allSettled(promiseArr)
-        .then((res) => {
-          if (res.length) {
-            chartsData = res
-              .filter((chart) => chart.status === 'fulfilled')
-              .map(
-                (chart) => (chart as PromiseFulfilledResult<ChartType>).value
-              );
-          }
-        })
-        .catch((err: AxiosError) => {
-          showErrorToast(
-            err,
-            jsonData['api-error-messages']['fetch-chart-error']
-          );
-        });
-    }
-
-    return chartsData;
-  };
-
-  const setLeafNode = (val: EntityLineage, pos: LineagePos) => {
-    if (pos === 'to' && val.downstreamEdges?.length === 0) {
-      setLeafNodes((prev) => ({
-        ...prev,
-        downStreamNode: [...(prev.downStreamNode ?? []), val.entity.id],
-      }));
-    }
-    if (pos === 'from' && val.upstreamEdges?.length === 0) {
-      setLeafNodes((prev) => ({
-        ...prev,
-        upStreamNode: [...(prev.upStreamNode ?? []), val.entity.id],
-      }));
-    }
-  };
-
-  const entityLineageHandler = (lineage: EntityLineage) => {
-    setEntityLineage(lineage);
-  };
-
-  const loadNodeHandler = (node: EntityReference, pos: LineagePos) => {
-    setNodeLoading({ id: node.id, state: true });
-    getLineageByFQN(node.fullyQualifiedName ?? '', node.type)
-      .then((res) => {
-        if (res) {
-          setLeafNode(res, pos);
-          setEntityLineage(getEntityLineage(entityLineage, res, pos));
-        } else {
-          showErrorToast(
-            jsonData['api-error-messages']['fetch-lineage-node-error']
-          );
-        }
-        setTimeout(() => {
-          setNodeLoading((prev) => ({ ...prev, state: false }));
-        }, 500);
-      })
-      .catch((err: AxiosError) => {
-        showErrorToast(
-          err,
-          jsonData['api-error-messages']['fetch-lineage-node-error']
-        );
-      });
-  };
-
-  const getLineageData = () => {
-    setIsLineageLoading(true);
-    getLineageByFQN(dashboardFQN, EntityType.DASHBOARD)
-      .then((res) => {
-        if (res) {
-          setEntityLineage(res);
-        } else {
-          throw jsonData['api-error-messages']['unexpected-server-response'];
-        }
-      })
-      .catch((err: AxiosError) => {
-        showErrorToast(
-          err,
-          jsonData['api-error-messages']['fetch-lineage-error']
-        );
-      })
-      .finally(() => {
-        setIsLineageLoading(false);
-      });
   };
 
   const fetchServiceDetails = (type: string, fqn: string) => {
@@ -450,14 +335,6 @@ const DashboardDetailsPage = () => {
   const fetchTabSpecificData = (tabField = '') => {
     switch (tabField) {
       case TabSpecificField.LINEAGE: {
-        if (!deleted) {
-          if (isEmpty(entityLineage)) {
-            getLineageData();
-          }
-
-          break;
-        }
-
         break;
       }
       case TabSpecificField.ACTIVITY_FEED: {
@@ -637,36 +514,6 @@ const DashboardDetailsPage = () => {
     );
   };
 
-  const addLineageHandler = (edge: Edge): Promise<void> => {
-    return new Promise<void>((resolve, reject) => {
-      addLineage(edge)
-        .then(() => {
-          resolve();
-        })
-        .catch((err: AxiosError) => {
-          showErrorToast(
-            err,
-            jsonData['api-error-messages']['add-lineage-error']
-          );
-          reject();
-        });
-    });
-  };
-
-  const removeLineageHandler = (data: EdgeData) => {
-    deleteLineageEdge(
-      data.fromEntity,
-      data.fromId,
-      data.toEntity,
-      data.toId
-    ).catch((err: AxiosError) => {
-      showErrorToast(
-        err,
-        jsonData['api-error-messages']['delete-lineage-error']
-      );
-    });
-  };
-
   const postFeedHandler = (value: string, id: string) => {
     const currentUser = AppState.userDetails?.name ?? AppState.users[0]?.name;
 
@@ -762,7 +609,6 @@ const DashboardDetailsPage = () => {
   useEffect(() => {
     if (dashboardPermissions.ViewAll || dashboardPermissions.ViewBasic) {
       fetchDashboardDetail(dashboardFQN);
-      setEntityLineage({} as EntityLineage);
       getEntityFeedCount();
     }
   }, [dashboardFQN, dashboardPermissions]);
@@ -791,7 +637,6 @@ const DashboardDetailsPage = () => {
           {dashboardPermissions.ViewAll || dashboardPermissions.ViewBasic ? (
             <DashboardDetails
               activeTab={activeTab}
-              addLineageHandler={addLineageHandler}
               chartDescriptionUpdateHandler={onChartUpdate}
               chartTagUpdateHandler={handleChartTagSelection}
               charts={charts}
@@ -806,23 +651,16 @@ const DashboardDetailsPage = () => {
               descriptionUpdateHandler={descriptionUpdateHandler}
               entityFieldTaskCount={entityFieldTaskCount}
               entityFieldThreadCount={entityFieldThreadCount}
-              entityLineage={entityLineage}
-              entityLineageHandler={entityLineageHandler}
               entityName={displayName}
               entityThread={entityThread}
               feedCount={feedCount}
               fetchFeedHandler={getFeedData}
               followDashboardHandler={followDashboard}
               followers={followers}
-              isLineageLoading={isLineageLoading}
-              isNodeLoading={isNodeLoading}
               isentityThreadLoading={isentityThreadLoading}
-              lineageLeafNodes={leafNodes}
-              loadNodeHandler={loadNodeHandler}
               owner={owner as EntityReference}
               paging={paging}
               postFeedHandler={postFeedHandler}
-              removeLineageHandler={removeLineageHandler}
               serviceType={serviceType}
               setActiveTabHandler={activeTabHandler}
               settingsUpdateHandler={settingsUpdateHandler}

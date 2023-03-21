@@ -4,6 +4,21 @@ slug: /connectors/database/db2
 ---
 
 # DB2
+<Table>
+
+| Stage | Metadata |Query Usage | Data Profiler | Data Quality | Lineage | DBT | Supported Versions |
+|:------:|:------:|:-----------:|:-------------:|:------------:|:-------:|:---:|:------------------:|
+|  PROD  |   ✅   |      ❌      |       ✅       |       ✅      |    Partially via Views    |  ✅  |  --  |
+
+</Table>
+
+<Table>
+
+| Lineage | Table-level | Column-level |
+|:------:|:-----------:|:-------------:|
+| Partially via Views | ✅ | ✅ |
+
+</Table>
 
 In this section, we provide guides and references to use the DB2 connector.
 
@@ -11,7 +26,8 @@ Configure and schedule DB2 metadata and profiler workflows from the OpenMetadata
 - [Requirements](#requirements)
 - [Metadata Ingestion](#metadata-ingestion)
 - [Data Profiler](#data-profiler)
-- [DBT Integration](#dbt-integration)
+- [Data Quality](#data-quality)
+- [dbt Integration](#dbt-integration)
 
 If you don't want to use the OpenMetadata Ingestion container to configure the workflows via the UI, then you can check
 the following docs to connect using Airflow SDK or with the CLI.
@@ -167,6 +183,7 @@ caption="Configure Metadata Ingestion Page"
 - **Enable Debug Log (toggle)**: Set the Enable Debug Log toggle to set the default log level to debug, these logs can be viewed later in Airflow.
 - **Mark Deleted Tables (toggle)**: Set the Mark Deleted Tables toggle to flag tables as soft-deleted if they are not present anymore in the source system.
 - **Mark Deleted Tables from Filter Only (toggle)**: Set the Mark Deleted Tables from Filter Only toggle to flag tables as soft-deleted if they are not present anymore within the filtered schema or database only. This flag is useful when you have more than one ingestion pipelines. For example if you have a schema
+- **Auto Tag PII(toggle)**: Auto PII tagging checks for column name to mark PII Sensitive/NonSensitive tag
 
 ### 7. Schedule the Ingestion and Deploy
 
@@ -234,11 +251,11 @@ text="Learn more about how to configure the Data Quality tests from the UI."
 link="/connectors/ingestion/workflows/data-quality"
 />
 
-## DBT Integration
+## dbt Integration
 
 <Tile
 icon="mediation"
-title="DBT Integration"
-text="Learn more about how to ingest DBT models' definitions and their lineage."
-link="/connectors/ingestion/workflows/metadata/dbt"
+title="dbt Integration"
+text="Learn more about how to ingest dbt models' definitions and their lineage."
+link="/connectors/ingestion/workflows/dbt"
 />

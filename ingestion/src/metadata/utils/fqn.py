@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from metadata.antlr.split_listener import FqnSplitListener
 from metadata.generated.antlr.FqnLexer import FqnLexer
 from metadata.generated.antlr.FqnParser import FqnParser
+from metadata.generated.schema.entity.classification.tag import Tag
 from metadata.generated.schema.entity.data.chart import Chart
 from metadata.generated.schema.entity.data.dashboard import Dashboard
 from metadata.generated.schema.entity.data.database import Database
@@ -35,7 +36,6 @@ from metadata.generated.schema.entity.data.mlmodel import MlModel
 from metadata.generated.schema.entity.data.pipeline import Pipeline
 from metadata.generated.schema.entity.data.table import Column, DataModel, Table
 from metadata.generated.schema.entity.data.topic import Topic
-from metadata.generated.schema.entity.tags.tagCategory import Tag
 from metadata.generated.schema.entity.teams.team import Team
 from metadata.generated.schema.entity.teams.user import User
 from metadata.generated.schema.tests.testCase import TestCase
@@ -143,22 +143,19 @@ def _(
     :param table_name: Table name
     :return:
     """
-    fqn_search_string = build_es_fqn_search_string(
-        database_name, schema_name, service_name, table_name
-    )
 
-    es_result = (
-        metadata.es_search_from_fqn(
-            entity_type=Table,
-            fqn_search_string=fqn_search_string,
+    entity: Optional[Union[Table, List[Table]]] = None
+
+    if not skip_es_search:
+        entity = search_table_from_es(
+            metadata=metadata,
+            database_name=database_name,
+            schema_name=schema_name,
+            table_name=table_name,
+            fetch_multiple_entities=fetch_multiple_entities,
+            service_name=service_name,
         )
-        if not skip_es_search
-        else None
-    )
 
-    entity: Optional[Union[Table, List[Table]]] = get_entity_from_es_result(
-        entity_list=es_result, fetch_multiple_entities=fetch_multiple_entities
-    )
     # if entity not found in ES proceed to build FQN with database_name and schema_name
     if not entity and database_name and schema_name:
         fqn = _build(service_name, database_name, schema_name, table_name)
@@ -259,14 +256,14 @@ def _(
 def _(
     _: OpenMetadata,  # ES Index not necessary for Tag FQN building
     *,
-    tag_category_name: str,
+    classification_name: str,
     tag_name: str,
 ) -> str:
-    if not tag_category_name or not tag_name:
+    if not classification_name or not tag_name:
         raise FQNBuildingException(
-            f"Args should be informed, but got category=`{tag_category_name}`, tag=`{tag_name}``"
+            f"Args should be informed, but got category=`{classification_name}`, tag=`{tag_name}``"
         )
-    return _build(tag_category_name, tag_name)
+    return _build(classification_name, tag_name)
 
 
 @fqn_build_registry.add(DataModel)
@@ -476,3 +473,25 @@ def build_es_fqn_search_string(
         service_name, database_name or "*", schema_name or "*", table_name
     )
     return fqn_search_string
+
+
+def search_table_from_es(
+    metadata: OpenMetadata,
+    database_name: str,
+    schema_name: str,
+    service_name: str,
+    table_name: str,
+    fetch_multiple_entities: bool = False,
+):
+    fqn_search_string = build_es_fqn_search_string(
+        database_name, schema_name, service_name, table_name
+    )
+
+    es_result = metadata.es_search_from_fqn(
+        entity_type=Table,
+        fqn_search_string=fqn_search_string,
+    )
+
+    return get_entity_from_es_result(
+        entity_list=es_result, fetch_multiple_entities=fetch_multiple_entities
+    )

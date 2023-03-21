@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -27,6 +27,7 @@ const mockData: SearchedDataProps['data'] = [
   {
     _index: SearchIndex.TABLE,
     _source: {
+      id: '1',
       name: 'name1',
       description: 'description1',
       fullyQualifiedName: 'fullyQualifiedName1',
@@ -42,6 +43,7 @@ const mockData: SearchedDataProps['data'] = [
   {
     _index: SearchIndex.TABLE,
     _source: {
+      id: '2',
       name: 'name2',
       description: 'description2',
       fullyQualifiedName: 'fullyQualifiedName2',
@@ -53,6 +55,7 @@ const mockData: SearchedDataProps['data'] = [
   {
     _index: SearchIndex.TABLE,
     _source: {
+      id: '3',
       name: 'name3',
       description: 'description3',
       fullyQualifiedName: 'fullyQualifiedName3',
@@ -84,21 +87,22 @@ jest.mock('../common/error-with-placeholder/ErrorPlaceHolderES', () => {
   return jest.fn().mockReturnValue(<p>ErrorPlaceHolderES</p>);
 });
 
+const MOCK_PROPS = {
+  isFilterSelected: false,
+  isSummaryPanelVisible: false,
+  currentPage: 0,
+  data: mockData,
+  handleSummaryPanelDisplay: mockHandleSummaryPanelDisplay,
+  paginate: mockPaginate,
+  selectedEntityId: 'name1',
+  totalValue: 10,
+};
+
 describe('Test SearchedData Component', () => {
   it('Component should render', () => {
-    const { container } = render(
-      <SearchedData
-        isFilterSelected
-        currentPage={0}
-        data={mockData}
-        handleSummaryPanelDisplay={mockHandleSummaryPanelDisplay}
-        paginate={mockPaginate}
-        totalValue={10}
-      />,
-      {
-        wrapper: MemoryRouter,
-      }
-    );
+    const { container } = render(<SearchedData {...MOCK_PROPS} />, {
+      wrapper: MemoryRouter,
+    });
 
     const searchedDataContainer = getByTestId(container, 'search-container');
 
@@ -106,34 +110,18 @@ describe('Test SearchedData Component', () => {
   });
 
   it('Should display table card according to data provided in props', () => {
-    const { container } = render(
-      <SearchedData
-        isFilterSelected
-        currentPage={0}
-        data={mockData}
-        handleSummaryPanelDisplay={mockHandleSummaryPanelDisplay}
-        paginate={mockPaginate}
-        totalValue={10}
-      />,
-      {
-        wrapper: MemoryRouter,
-      }
-    );
+    const { container } = render(<SearchedData {...MOCK_PROPS} />, {
+      wrapper: MemoryRouter,
+    });
 
     const searchedDataContainer = getAllByTestId(container, 'table-data-card');
 
-    expect(searchedDataContainer.length).toBe(3);
+    expect(searchedDataContainer).toHaveLength(3);
   });
 
   it('If children is provided it should display', () => {
     const { container } = render(
-      <SearchedData
-        isFilterSelected
-        currentPage={0}
-        data={mockData}
-        handleSummaryPanelDisplay={mockHandleSummaryPanelDisplay}
-        paginate={mockPaginate}
-        totalValue={10}>
+      <SearchedData {...MOCK_PROPS}>
         <p>hello world</p>
       </SearchedData>,
       {
@@ -146,13 +134,7 @@ describe('Test SearchedData Component', () => {
 
   it('Pagination Should be there if data is more than 10 count', () => {
     const { container } = render(
-      <SearchedData
-        isFilterSelected
-        currentPage={0}
-        data={mockData}
-        handleSummaryPanelDisplay={mockHandleSummaryPanelDisplay}
-        paginate={mockPaginate}
-        totalValue={11}>
+      <SearchedData {...MOCK_PROPS} totalValue={11}>
         <p>hello world</p>
       </SearchedData>,
       {
@@ -166,12 +148,9 @@ describe('Test SearchedData Component', () => {
   it('Onboarding component should display if there is showOnboardingTemplate is true', () => {
     const { container } = render(
       <SearchedData
-        isFilterSelected
+        {...MOCK_PROPS}
         showOnboardingTemplate
-        currentPage={0}
         data={[]}
-        handleSummaryPanelDisplay={mockHandleSummaryPanelDisplay}
-        paginate={mockPaginate}
         totalValue={0}
       />,
       {
@@ -184,14 +163,7 @@ describe('Test SearchedData Component', () => {
 
   it('ErrorPlaceHolderES component should display if there is no data', () => {
     const { container } = render(
-      <SearchedData
-        isFilterSelected
-        currentPage={0}
-        data={[]}
-        handleSummaryPanelDisplay={mockHandleSummaryPanelDisplay}
-        paginate={mockPaginate}
-        totalValue={0}
-      />,
+      <SearchedData {...MOCK_PROPS} data={[]} totalValue={0} />,
       {
         wrapper: MemoryRouter,
       }

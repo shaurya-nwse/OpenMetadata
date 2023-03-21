@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -15,24 +15,25 @@ import { Modal, Table, Typography } from 'antd';
 import { ColumnsType } from 'antd/lib/table';
 import { ExpandableConfig } from 'antd/lib/table/interface';
 import { AxiosError } from 'axios';
-import { isArray, isEmpty } from 'lodash';
+import { TeamType } from 'generated/api/teams/createTeam';
+import { isEmpty } from 'lodash';
 import React, { FC, useCallback, useMemo, useState } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { getTeamByName, updateTeam } from '../../axiosAPIs/teamsAPI';
+import { getTeamByName, updateTeam } from 'rest/teamsAPI';
+import { getEntityName } from 'utils/EntityUtils';
 import { TABLE_CONSTANTS } from '../../constants/Teams.constants';
 import { Team } from '../../generated/entity/teams/team';
-import { getEntityName } from '../../utils/CommonUtils';
+import { Transi18next } from '../../utils/CommonUtils';
 import { getTeamsWithFqnPath } from '../../utils/RouterUtils';
-import SVGIcons, { Icons } from '../../utils/SvgUtils';
+import { getTableExpandableConfig } from '../../utils/TableUtils';
 import { getMovedTeamData } from '../../utils/TeamUtils';
 import { showErrorToast, showSuccessToast } from '../../utils/ToastUtils';
 import {
   DraggableBodyRowProps,
   MovedTeamProps,
-  TableExpandableDataProps,
   TeamHierarchyProps,
 } from './team.interface';
 import './teams.less';
@@ -50,7 +51,7 @@ const TeamHierarchy: FC<TeamHierarchyProps> = ({
   const columns: ColumnsType<Team> = useMemo(() => {
     return [
       {
-        title: 'Teams',
+        title: t('label.team-plural'),
         dataIndex: 'teams',
         key: 'teams',
         render: (_, record) => (
@@ -62,33 +63,45 @@ const TeamHierarchy: FC<TeamHierarchyProps> = ({
         ),
       },
       {
-        title: 'Type',
+        title: t('label.type'),
         dataIndex: 'teamType',
         key: 'teamType',
       },
       {
-        title: 'Sub Teams',
+        title: t('label.sub-team-plural'),
         dataIndex: 'childrenCount',
         key: 'subTeams',
         render: (childrenCount: number) => childrenCount ?? '--',
       },
       {
-        title: 'Users',
+        title: t('label.user-plural'),
         dataIndex: 'userCount',
         key: 'users',
         render: (userCount: number) => userCount ?? '--',
       },
       {
-        title: 'Asset Count',
+        title: t('label.entity-count', {
+          entity: t('label.asset'),
+        }),
         dataIndex: 'owns',
         key: 'owns',
         render: (owns) => owns.length,
       },
       {
-        title: 'Description',
+        title: t('label.description'),
         dataIndex: 'description',
+        width: 450,
         key: 'description',
-        render: (description: string) => description || '--',
+        render: (description: string) => (
+          <Typography.Paragraph
+            className="m-b-0"
+            ellipsis={{
+              rows: 2,
+            }}
+            title={description}>
+            {isEmpty(description) ? '--' : description}
+          </Typography.Paragraph>
+        ),
       },
     ];
   }, [data, onTeamExpand]);
@@ -98,14 +111,15 @@ const TeamHierarchy: FC<TeamHierarchyProps> = ({
       if (dragRecord.id === dropRecord.id) {
         return;
       }
-      let dropTeam: Team = dropRecord;
-      if (!isArray(dropTeam.children)) {
-        const res = await getTeamByName(dropTeam.name, ['parents'], 'all');
-        dropTeam = (res.parents?.[0] as Team) || currentTeam;
+
+      if (dropRecord.teamType === TeamType.Group) {
+        showErrorToast(t('message.error-team-transfer-message'));
+
+        return;
       }
       setMovedTeam({
         from: dragRecord,
-        to: dropTeam,
+        to: dropRecord,
       });
       setIsModalOpen(true);
     },
@@ -133,50 +147,16 @@ const TeamHierarchy: FC<TeamHierarchyProps> = ({
     }
   };
 
-  const tableExpandableIconData = useMemo(
-    () =>
-      ({ expanded, onExpand, expandable, record }: TableExpandableDataProps) =>
-        expandable ? (
-          <div
-            draggable
-            className="expand-cell-icon-container"
-            data-testid="expand-table-row"
-            onClick={(e) =>
-              onExpand(
-                record,
-                e as unknown as React.MouseEvent<HTMLElement, MouseEvent>
-              )
-            }>
-            <SVGIcons
-              className="drag-icon"
-              draggable="true"
-              icon={Icons.DRAG}
-            />
-            <SVGIcons
-              className="expand-icon"
-              icon={expanded ? Icons.ARROW_DOWN_LIGHT : Icons.ARROW_RIGHT_LIGHT}
-            />
-          </div>
-        ) : (
-          <>
-            <SVGIcons className="drag-icon" icon={Icons.DRAG} />
-            <div className="expand-cell-empty-icon-container" />
-          </>
-        ),
-    []
-  );
-
   const expandableConfig: ExpandableConfig<Team> = useMemo(
     () => ({
+      ...getTableExpandableConfig<Team>(true),
       onExpand: (isOpen, record) => {
         if (isOpen && isEmpty(record.children)) {
           onTeamExpand(false, record.fullyQualifiedName, true);
         }
       },
-      expandIcon: ({ expanded, onExpand, expandable, record }) =>
-        tableExpandableIconData({ expanded, onExpand, expandable, record }),
     }),
-    [onTeamExpand, tableExpandableIconData]
+    [onTeamExpand]
   );
 
   return (
@@ -210,18 +190,22 @@ const TeamHierarchy: FC<TeamHierarchyProps> = ({
         centered
         destroyOnClose
         closable={false}
+        confirmLoading={isTableLoading}
         data-testid="confirmation-modal"
         okText={t('label.confirm')}
-        title={t('label.move-the-team')}
-        visible={isModalOpen}
+        open={isModalOpen}
+        title={t('label.move-the-entity', { entity: t('label.team') })}
         onCancel={() => setIsModalOpen(false)}
         onOk={handleChangeTeam}>
-        <Typography.Text>
-          {t('message.team-transfer-message', {
+        <Transi18next
+          i18nKey="message.entity-transfer-message"
+          renderElement={<strong />}
+          values={{
             from: movedTeam?.from?.name,
             to: movedTeam?.to?.name,
-          })}
-        </Typography.Text>
+            entity: t('label.team-lowercase'),
+          }}
+        />
       </Modal>
     </>
   );

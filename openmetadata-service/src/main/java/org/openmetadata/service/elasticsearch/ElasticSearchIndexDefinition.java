@@ -11,6 +11,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import lombok.Builder;
 import lombok.Getter;
@@ -26,6 +27,7 @@ import org.elasticsearch.client.indices.CreateIndexResponse;
 import org.elasticsearch.client.indices.GetIndexRequest;
 import org.elasticsearch.client.indices.PutMappingRequest;
 import org.elasticsearch.common.xcontent.XContentType;
+import org.openmetadata.schema.service.configuration.elasticsearch.ElasticSearchConfiguration;
 import org.openmetadata.schema.settings.EventPublisherJob;
 import org.openmetadata.schema.settings.EventPublisherJob.Status;
 import org.openmetadata.schema.settings.FailureDetails;
@@ -37,10 +39,22 @@ import org.openmetadata.service.util.JsonUtils;
 @Slf4j
 public class ElasticSearchIndexDefinition {
   private static final String REASON_TRACE = "Reason: [%s] , Trace : [%s]";
+  public static final String ENTITY_REPORT_DATA = "entityReportData";
+  public static final String WEB_ANALYTIC_ENTITY_VIEW_REPORT_DATA = "webAnalyticEntityViewReportData";
+  public static final String WEB_ANALYTIC_USER_ACTIVITY_REPORT_DATA = "webAnalyticUserActivityReportData";
   private final CollectionDAO dao;
   final EnumMap<ElasticSearchIndexType, ElasticSearchIndexStatus> elasticSearchIndexes =
       new EnumMap<>(ElasticSearchIndexType.class);
+
+  public static final HashMap<String, String> ENTITY_TYPE_TO_INDEX_MAP;
   private final RestHighLevelClient client;
+
+  static {
+    ENTITY_TYPE_TO_INDEX_MAP = new HashMap<>();
+    for (ElasticSearchIndexType elasticSearchIndexType : ElasticSearchIndexType.values()) {
+      ENTITY_TYPE_TO_INDEX_MAP.put(elasticSearchIndexType.entityType, elasticSearchIndexType.indexName);
+    }
+  }
 
   public ElasticSearchIndexDefinition(RestHighLevelClient client, CollectionDAO dao) {
     this.dao = dao;
@@ -57,40 +71,49 @@ public class ElasticSearchIndexDefinition {
   }
 
   public enum ElasticSearchIndexType {
-    TABLE_SEARCH_INDEX("table_search_index", "/elasticsearch/table_index_mapping.json"),
-    TOPIC_SEARCH_INDEX("topic_search_index", "/elasticsearch/topic_index_mapping.json"),
-    DASHBOARD_SEARCH_INDEX("dashboard_search_index", "/elasticsearch/dashboard_index_mapping.json"),
-    PIPELINE_SEARCH_INDEX("pipeline_search_index", "/elasticsearch/pipeline_index_mapping.json"),
-    USER_SEARCH_INDEX("user_search_index", "/elasticsearch/user_index_mapping.json"),
-    TEAM_SEARCH_INDEX("team_search_index", "/elasticsearch/team_index_mapping.json"),
-    GLOSSARY_SEARCH_INDEX("glossary_search_index", "/elasticsearch/glossary_index_mapping.json"),
-    MLMODEL_SEARCH_INDEX("mlmodel_search_index", "/elasticsearch/mlmodel_index_mapping.json"),
-    TAG_SEARCH_INDEX("tag_search_index", "/elasticsearch/tag_index_mapping.json"),
-    ENTITY_REPORT_DATA_INDEX("entity_report_data_index", "/elasticsearch/entity_report_data_index.json"),
+    TABLE_SEARCH_INDEX(Entity.TABLE, "table_search_index", "/elasticsearch/%s/table_index_mapping.json"),
+    TOPIC_SEARCH_INDEX(Entity.TOPIC, "topic_search_index", "/elasticsearch/%s/topic_index_mapping.json"),
+    DASHBOARD_SEARCH_INDEX(
+        Entity.DASHBOARD, "dashboard_search_index", "/elasticsearch/%s/dashboard_index_mapping.json"),
+    PIPELINE_SEARCH_INDEX(Entity.PIPELINE, "pipeline_search_index", "/elasticsearch/%s/pipeline_index_mapping.json"),
+    USER_SEARCH_INDEX(Entity.USER, "user_search_index", "/elasticsearch/%s/user_index_mapping.json"),
+    TEAM_SEARCH_INDEX(Entity.TEAM, "team_search_index", "/elasticsearch/%s/team_index_mapping.json"),
+    GLOSSARY_SEARCH_INDEX(Entity.GLOSSARY, "glossary_search_index", "/elasticsearch/%s/glossary_index_mapping.json"),
+    MLMODEL_SEARCH_INDEX(Entity.MLMODEL, "mlmodel_search_index", "/elasticsearch/%s/mlmodel_index_mapping.json"),
+    CONTAINER_SEARCH_INDEX(
+        Entity.CONTAINER, "container_search_index", "/elasticsearch/%s/container_index_mapping.json"),
+    TAG_SEARCH_INDEX(Entity.TAG, "tag_search_index", "/elasticsearch/%s/tag_index_mapping.json"),
+    ENTITY_REPORT_DATA_INDEX(
+        ENTITY_REPORT_DATA, "entity_report_data_index", "/elasticsearch/entity_report_data_index.json"),
     WEB_ANALYTIC_ENTITY_VIEW_REPORT_DATA_INDEX(
-        "web_analytic_entity_view_report_data_index", "/elasticsearch/web_analytic_entity_view_report_data_index.json"),
+        Entity.WEB_ANALYTIC_EVENT,
+        "web_analytic_entity_view_report_data_index",
+        "/elasticsearch/web_analytic_entity_view_report_data_index.json"),
     WEB_ANALYTIC_USER_ACTIVITY_REPORT_DATA_INDEX(
+        WEB_ANALYTIC_USER_ACTIVITY_REPORT_DATA,
         "web_analytic_user_activity_report_data_index",
         "/elasticsearch/web_analytic_user_activity_report_data_index.json");
 
     public final String indexName;
     public final String indexMappingFile;
+    public final String entityType;
 
-    ElasticSearchIndexType(String indexName, String indexMappingFile) {
+    ElasticSearchIndexType(String entityType, String indexName, String indexMappingFile) {
+      this.entityType = entityType;
       this.indexName = indexName;
       this.indexMappingFile = indexMappingFile;
     }
   }
 
-  public void createIndexes() {
+  public void createIndexes(ElasticSearchConfiguration esConfig) {
     for (ElasticSearchIndexType elasticSearchIndexType : ElasticSearchIndexType.values()) {
-      createIndex(elasticSearchIndexType);
+      createIndex(elasticSearchIndexType, esConfig.getSearchIndexMappingLanguage().value());
     }
   }
 
-  public void updateIndexes() {
+  public void updateIndexes(ElasticSearchConfiguration esConfig) {
     for (ElasticSearchIndexType elasticSearchIndexType : ElasticSearchIndexType.values()) {
-      updateIndex(elasticSearchIndexType);
+      updateIndex(elasticSearchIndexType, esConfig.getSearchIndexMappingLanguage().value());
     }
   }
 
@@ -100,21 +123,13 @@ public class ElasticSearchIndexDefinition {
     }
   }
 
-  public boolean checkIndexExistsOrCreate(ElasticSearchIndexType indexType) {
-    boolean exists = elasticSearchIndexes.get(indexType) == ElasticSearchIndexStatus.CREATED;
-    if (!exists) {
-      exists = createIndex(indexType);
-    }
-    return exists;
-  }
-
-  public boolean createIndex(ElasticSearchIndexType elasticSearchIndexType) {
+  public boolean createIndex(ElasticSearchIndexType elasticSearchIndexType, String lang) {
     try {
       GetIndexRequest gRequest = new GetIndexRequest(elasticSearchIndexType.indexName);
       gRequest.local(false);
       boolean exists = client.indices().exists(gRequest, RequestOptions.DEFAULT);
       if (!exists) {
-        String elasticSearchIndexMapping = getIndexMapping(elasticSearchIndexType);
+        String elasticSearchIndexMapping = getIndexMapping(elasticSearchIndexType, lang);
         CreateIndexRequest request = new CreateIndexRequest(elasticSearchIndexType.indexName);
         request.source(elasticSearchIndexMapping, XContentType.JSON);
         CreateIndexResponse createIndexResponse = client.indices().create(request, RequestOptions.DEFAULT);
@@ -136,12 +151,12 @@ public class ElasticSearchIndexDefinition {
     return String.format("Failed While : %s \n Additional Info:  %s ", type, info);
   }
 
-  private void updateIndex(ElasticSearchIndexType elasticSearchIndexType) {
+  private void updateIndex(ElasticSearchIndexType elasticSearchIndexType, String lang) {
     try {
       GetIndexRequest gRequest = new GetIndexRequest(elasticSearchIndexType.indexName);
       gRequest.local(false);
       boolean exists = client.indices().exists(gRequest, RequestOptions.DEFAULT);
-      String elasticSearchIndexMapping = getIndexMapping(elasticSearchIndexType);
+      String elasticSearchIndexMapping = getIndexMapping(elasticSearchIndexType, lang);
       if (exists) {
         PutMappingRequest request = new PutMappingRequest(elasticSearchIndexType.indexName);
         request.source(elasticSearchIndexMapping, XContentType.JSON);
@@ -185,8 +200,11 @@ public class ElasticSearchIndexDefinition {
     elasticSearchIndexes.put(indexType, elasticSearchIndexStatus);
   }
 
-  public String getIndexMapping(ElasticSearchIndexType elasticSearchIndexType) throws IOException {
-    InputStream in = ElasticSearchIndexDefinition.class.getResourceAsStream(elasticSearchIndexType.indexMappingFile);
+  public String getIndexMapping(ElasticSearchIndexType elasticSearchIndexType, String lang) throws IOException {
+    InputStream in =
+        ElasticSearchIndexDefinition.class.getResourceAsStream(
+            String.format(elasticSearchIndexType.indexMappingFile, lang.toLowerCase()));
+    assert in != null;
     return new String(in.readAllBytes());
   }
 
@@ -211,6 +229,14 @@ public class ElasticSearchIndexDefinition {
       return ElasticSearchIndexType.GLOSSARY_SEARCH_INDEX;
     } else if (type.equalsIgnoreCase(Entity.TAG)) {
       return ElasticSearchIndexType.TAG_SEARCH_INDEX;
+    } else if (type.equalsIgnoreCase(ENTITY_REPORT_DATA)) {
+      return ElasticSearchIndexType.ENTITY_REPORT_DATA_INDEX;
+    } else if (type.equalsIgnoreCase(WEB_ANALYTIC_ENTITY_VIEW_REPORT_DATA)) {
+      return ElasticSearchIndexType.WEB_ANALYTIC_ENTITY_VIEW_REPORT_DATA_INDEX;
+    } else if (type.equalsIgnoreCase(WEB_ANALYTIC_USER_ACTIVITY_REPORT_DATA)) {
+      return ElasticSearchIndexType.WEB_ANALYTIC_USER_ACTIVITY_REPORT_DATA_INDEX;
+    } else if (type.equalsIgnoreCase(Entity.CONTAINER)) {
+      return ElasticSearchIndexType.CONTAINER_SEARCH_INDEX;
     }
     throw new RuntimeException("Failed to find index doc for type " + type);
   }
@@ -259,6 +285,14 @@ class FlattenColumn {
   List<TagLabel> tags;
 }
 
+@Getter
+@Builder
+class FlattenSchemaField {
+  String name;
+  String description;
+  List<TagLabel> tags;
+}
+
 class ParseTags {
   TagLabel tierTag;
   final List<TagLabel> tags;
@@ -267,7 +301,8 @@ class ParseTags {
     if (!tags.isEmpty()) {
       List<TagLabel> tagsList = new ArrayList<>(tags);
       for (TagLabel tag : tagsList) {
-        if (tag.getTagFQN().toLowerCase().matches("(.*)tier(.*)")) {
+        String tier = tag.getTagFQN().split("\\.")[0];
+        if (tier.equalsIgnoreCase("tier")) {
           tierTag = tag;
           break;
         }

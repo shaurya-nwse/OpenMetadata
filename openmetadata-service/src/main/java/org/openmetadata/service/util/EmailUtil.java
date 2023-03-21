@@ -1,3 +1,16 @@
+/*
+ *  Copyright 2021 Collate
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.openmetadata.service.util;
 
 import static freemarker.template.Configuration.VERSION_2_3_28;
@@ -20,7 +33,7 @@ import org.openmetadata.schema.entity.feed.Thread;
 import org.openmetadata.schema.entity.teams.User;
 import org.openmetadata.schema.tests.type.TestCaseResult;
 import org.openmetadata.service.OpenMetadataApplicationConfig;
-import org.openmetadata.service.alerts.emailAlert.EmailMessage;
+import org.openmetadata.service.events.subscription.emailAlert.EmailMessage;
 import org.simplejavamail.api.email.Email;
 import org.simplejavamail.api.email.EmailPopulatingBuilder;
 import org.simplejavamail.api.mailer.Mailer;
@@ -45,7 +58,6 @@ public class EmailUtil {
   public static final String DEFAULT_EXPIRATION_TIME = "60";
   public static final String PASSWORD = "password";
   public static final String APPLICATION_LOGIN_LINK = "applicationLoginLink";
-
   public static final String PASSWORD_RESET_TEMPLATE_FILE = "reset-link.ftl";
   // Account Change Status
   private static final String ACCOUNT_STATUS_SUBJECT = "%s: Change in Account Status";
@@ -53,6 +65,8 @@ public class EmailUtil {
   public static final String ACTION_STATUS_KEY = "actionStatus";
   public static final String ACCOUNT_STATUS_TEMPLATE_FILE = "account-activity-change.ftl";
   private static final String INVITE_SUBJECT = "Welcome to %s";
+  private static final String CHANGE_EVENT_UPDATE = "Change Event Update from %s";
+
   private static final String TASK_SUBJECT = "%s : Task Assignment Notification";
   private static final String TEST_SUBJECT = "%s : Test Result Notification";
   public static final String INVITE_RANDOM_PWD = "invite-randompwd.ftl";
@@ -264,14 +278,14 @@ public class EmailUtil {
     }
   }
 
-  public static void sendChangeEventMail(String receiverMail, EmailMessage emailMesssage) {
+  public static void sendChangeEventMail(String receiverMail, EmailMessage emailMessaged) {
     if (DEFAULT_SMTP_SETTINGS.getEnableSmtpServer()) {
       Map<String, String> templatePopulator = new HashMap<>();
       templatePopulator.put(EmailUtil.USERNAME, receiverMail.split("@")[0]);
-      templatePopulator.put("updatedBy", emailMesssage.getUpdatedBy());
-      templatePopulator.put("entityUrl", emailMesssage.getEntityUrl());
+      templatePopulator.put("updatedBy", emailMessaged.getUpdatedBy());
+      templatePopulator.put("entityUrl", emailMessaged.getEntityUrl());
       StringBuilder buff = new StringBuilder();
-      for (String cmessage : emailMesssage.getChangeMessage()) {
+      for (String cmessage : emailMessaged.getChangeMessage()) {
         buff.append(cmessage);
         buff.append("\n");
       }
@@ -279,7 +293,7 @@ public class EmailUtil {
       try {
         EmailUtil.getInstance()
             .sendMail(
-                EmailUtil.getInstance().getEmailInviteSubject(),
+                EmailUtil.getInstance().getChangeEventTemplate(),
                 templatePopulator,
                 receiverMail,
                 EmailUtil.EMAIL_TEMPLATE_BASEPATH,
@@ -308,6 +322,10 @@ public class EmailUtil {
 
   public String getEmailInviteSubject() {
     return String.format(INVITE_SUBJECT, DEFAULT_SMTP_SETTINGS.getEmailingEntity());
+  }
+
+  public String getChangeEventTemplate() {
+    return String.format(CHANGE_EVENT_UPDATE, DEFAULT_SMTP_SETTINGS.getEmailingEntity());
   }
 
   public String getTaskAssignmentSubject() {

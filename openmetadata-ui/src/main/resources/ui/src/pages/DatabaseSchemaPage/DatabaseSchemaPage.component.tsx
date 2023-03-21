@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,13 +11,30 @@
  *  limitations under the License.
  */
 
-import { Col, Row, Space, Table as TableAntd } from 'antd';
+import { Card, Col, Row, Skeleton, Table as TableAntd } from 'antd';
 import { ColumnsType } from 'antd/lib/table';
 import { AxiosError } from 'axios';
+import ActivityFeedList from 'components/ActivityFeed/ActivityFeedList/ActivityFeedList';
+import ActivityThreadPanel from 'components/ActivityFeed/ActivityThreadPanel/ActivityThreadPanel';
+import Description from 'components/common/description/Description';
+import EntityPageInfo from 'components/common/entityPageInfo/EntityPageInfo';
+import ErrorPlaceHolder from 'components/common/error-with-placeholder/ErrorPlaceHolder';
+import NextPrevious from 'components/common/next-previous/NextPrevious';
+import RichTextEditorPreviewer from 'components/common/rich-text-editor/RichTextEditorPreviewer';
+import TabsPane from 'components/common/TabsPane/TabsPane';
+import { TitleBreadcrumbProps } from 'components/common/title-breadcrumb/title-breadcrumb.interface';
+import PageContainerV1 from 'components/containers/PageContainerV1';
+import Loader from 'components/Loader/Loader';
+import { usePermissionProvider } from 'components/PermissionProvider/PermissionProvider';
+import {
+  OperationPermission,
+  ResourceEntity,
+} from 'components/PermissionProvider/PermissionProvider.interface';
 import { compare, Operation } from 'fast-json-patch';
+import { TagLabel } from 'generated/type/tagLabel';
 import { isUndefined, startCase, toNumber } from 'lodash';
 import { observer } from 'mobx-react';
-import { EntityFieldThreadCount, ExtraInfo } from 'Models';
+import { EntityTags, ExtraInfo } from 'Models';
 import React, {
   Fragment,
   FunctionComponent,
@@ -29,36 +46,18 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useHistory, useParams } from 'react-router-dom';
-import { default as AppState, default as appState } from '../../AppState';
 import {
   getDatabaseSchemaDetailsByFQN,
   patchDatabaseSchemaDetails,
-} from '../../axiosAPIs/databaseAPI';
+} from 'rest/databaseAPI';
 import {
   getAllFeeds,
   getFeedCount,
   postFeedById,
   postThread,
-} from '../../axiosAPIs/feedsAPI';
-import { searchQuery } from '../../axiosAPIs/searchAPI';
-import ActivityFeedList from '../../components/ActivityFeed/ActivityFeedList/ActivityFeedList';
-import ActivityThreadPanel from '../../components/ActivityFeed/ActivityThreadPanel/ActivityThreadPanel';
-import Description from '../../components/common/description/Description';
-import ManageButton from '../../components/common/entityPageInfo/ManageButton/ManageButton';
-import EntitySummaryDetails from '../../components/common/EntitySummaryDetails/EntitySummaryDetails';
-import ErrorPlaceHolder from '../../components/common/error-with-placeholder/ErrorPlaceHolder';
-import NextPrevious from '../../components/common/next-previous/NextPrevious';
-import RichTextEditorPreviewer from '../../components/common/rich-text-editor/RichTextEditorPreviewer';
-import TabsPane from '../../components/common/TabsPane/TabsPane';
-import TitleBreadcrumb from '../../components/common/title-breadcrumb/title-breadcrumb.component';
-import { TitleBreadcrumbProps } from '../../components/common/title-breadcrumb/title-breadcrumb.interface';
-import PageContainerV1 from '../../components/containers/PageContainerV1';
-import Loader from '../../components/Loader/Loader';
-import { usePermissionProvider } from '../../components/PermissionProvider/PermissionProvider';
-import {
-  OperationPermission,
-  ResourceEntity,
-} from '../../components/PermissionProvider/PermissionProvider.interface';
+} from 'rest/feedsAPI';
+import { searchQuery } from 'rest/searchAPI';
+import { default as AppState, default as appState } from '../../AppState';
 import { FQN_SEPARATOR_CHAR } from '../../constants/char.constants';
 import {
   getDatabaseDetailsPath,
@@ -81,18 +80,16 @@ import { Table } from '../../generated/entity/data/table';
 import { Post, Thread } from '../../generated/entity/feed/thread';
 import { Paging } from '../../generated/type/paging';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
+import { EntityFieldThreadCount } from '../../interface/feed.interface';
 import jsonData from '../../jsons/en';
-import {
-  getEntityName,
-  getPartialNameFromTableFQN,
-} from '../../utils/CommonUtils';
+import { getPartialNameFromTableFQN } from '../../utils/CommonUtils';
 import {
   databaseSchemaDetailsTabs,
   getCurrentDatabaseSchemaDetailsTab,
   getQueryStringForSchemaTables,
   getTablesFromSearchResponse,
 } from '../../utils/DatabaseSchemaDetailsUtils';
-import { getEntityFeedLink } from '../../utils/EntityUtils';
+import { getEntityFeedLink, getEntityName } from '../../utils/EntityUtils';
 import {
   deletePost,
   getEntityFieldThreadCounts,
@@ -105,7 +102,11 @@ import {
   serviceTypeLogo,
 } from '../../utils/ServiceUtils';
 import { getErrorText } from '../../utils/StringsUtils';
-import { getEntityLink } from '../../utils/TableUtils';
+import {
+  getEntityLink,
+  getTagsWithoutTier,
+  getTierTags,
+} from '../../utils/TableUtils';
 import { showErrorToast } from '../../utils/ToastUtils';
 
 const DatabaseSchemaPage: FunctionComponent = () => {
@@ -119,10 +120,13 @@ const DatabaseSchemaPage: FunctionComponent = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [databaseSchema, setDatabaseSchema] = useState<DatabaseSchema>();
   const [tableData, setTableData] = useState<Array<Table>>([]);
+  const [tableDataLoading, setTableDataLoading] = useState<boolean>(true);
 
   const [databaseSchemaName, setDatabaseSchemaName] = useState<string>(
     databaseSchemaFQN.split(FQN_SEPARATOR_CHAR).slice(-1).pop() || ''
   );
+  const [IsSchemaDetailsLoading, setIsSchemaDetailsLoading] =
+    useState<boolean>(true);
   const [isEdit, setIsEdit] = useState(false);
   const [description, setDescription] = useState('');
   const [databaseSchemaId, setDatabaseSchemaId] = useState('');
@@ -152,6 +156,9 @@ const DatabaseSchemaPage: FunctionComponent = () => {
 
   const [databaseSchemaPermission, setDatabaseSchemaPermission] =
     useState<OperationPermission>(DEFAULT_ENTITY_PERMISSION);
+
+  const [tags, setTags] = useState<Array<EntityTags>>([]);
+  const [tier, setTier] = useState<TagLabel>();
 
   const fetchDatabaseSchemaPermission = async () => {
     setIsLoading(true);
@@ -248,7 +255,12 @@ const DatabaseSchemaPage: FunctionComponent = () => {
   };
 
   const getDetailsByFQN = () => {
-    getDatabaseSchemaDetailsByFQN(databaseSchemaFQN, ['owner', 'usageSummary'])
+    setIsSchemaDetailsLoading(true);
+    getDatabaseSchemaDetailsByFQN(databaseSchemaFQN, [
+      'owner',
+      'usageSummary',
+      'tags',
+    ])
       .then((res) => {
         if (res) {
           const {
@@ -258,11 +270,14 @@ const DatabaseSchemaPage: FunctionComponent = () => {
             service,
             serviceType,
             database,
+            tags,
           } = res;
           setDatabaseSchema(res);
           setDescription(schemaDescription);
           setDatabaseSchemaId(id);
           setDatabaseSchemaName(name);
+          setTags(getTagsWithoutTier(tags || []));
+          setTier(getTierTags(tags ?? []));
           setSlashedTableName([
             {
               name: startCase(ServiceCategory.DATABASE_SERVICES),
@@ -310,6 +325,7 @@ const DatabaseSchemaPage: FunctionComponent = () => {
       })
       .finally(() => {
         setIsLoading(false);
+        setIsSchemaDetailsLoading(false);
       });
   };
 
@@ -317,6 +333,7 @@ const DatabaseSchemaPage: FunctionComponent = () => {
     pageNumber: number,
     databaseSchema: DatabaseSchema
   ) => {
+    setTableDataLoading(true);
     try {
       setCurrentTablesPage(pageNumber);
       const res = await searchQuery({
@@ -326,6 +343,8 @@ const DatabaseSchemaPage: FunctionComponent = () => {
           databaseSchema
         ),
         pageNumber,
+        sortField: 'name.keyword',
+        sortOrder: 'asc',
         pageSize: PAGE_SIZE,
         searchIndex: SearchIndex.TABLE,
         includeDeleted: false,
@@ -334,6 +353,8 @@ const DatabaseSchemaPage: FunctionComponent = () => {
       setTableInstanceCount(res.hits.total.value);
     } catch (err) {
       showErrorToast(err as AxiosError);
+    } finally {
+      setTableDataLoading(false);
     }
   };
 
@@ -459,6 +480,25 @@ const DatabaseSchemaPage: FunctionComponent = () => {
     });
   };
 
+  const onTagUpdate = async (selectedTags?: Array<EntityTags>) => {
+    if (selectedTags) {
+      const updatedTags = [...(tier ? [tier] : []), ...selectedTags];
+      const updatedData = { ...databaseSchema, tags: updatedTags };
+
+      try {
+        const res = await saveUpdatedDatabaseSchemaData(
+          updatedData as DatabaseSchema
+        );
+        setDatabaseSchema(res);
+        setTags(getTagsWithoutTier(res.tags || []));
+        setTier(getTierTags(res.tags ?? []));
+        getEntityFeedCount();
+      } catch (error) {
+        showErrorToast(error as AxiosError, t('server.api-error'));
+      }
+    }
+  };
+
   const fetchActivityFeed = (after?: string) => {
     setIsentityThreadLoading(true);
     getAllFeeds(
@@ -567,17 +607,19 @@ const DatabaseSchemaPage: FunctionComponent = () => {
   const tableColumn: ColumnsType<Table> = useMemo(
     () => [
       {
-        title: t('label.table-name'),
+        title: t('label.table-entity-text', {
+          entityText: t('label.name'),
+        }),
         dataIndex: 'name',
         key: 'name',
-        render: (text: string, record: Table) => {
+        render: (_, record: Table) => {
           return (
             <Link
               to={getEntityLink(
                 EntityType.TABLE,
                 record.fullyQualifiedName as string
               )}>
-              {text}
+              {getEntityName(record)}
             </Link>
           );
         },
@@ -590,7 +632,7 @@ const DatabaseSchemaPage: FunctionComponent = () => {
           text?.trim() ? (
             <RichTextEditorPreviewer markdown={text} />
           ) : (
-            <span className="text-grey-muted">No description</span>
+            <span className="text-grey-muted">{t('label.no-description')}</span>
           ),
       },
     ],
@@ -606,18 +648,24 @@ const DatabaseSchemaPage: FunctionComponent = () => {
           columns={tableColumn}
           data-testid="databaseSchema-tables"
           dataSource={tableData}
+          loading={{
+            spinning: tableDataLoading,
+            indicator: <Loader size="small" />,
+          }}
           pagination={false}
           rowKey="id"
           size="small"
         />
-        <NextPrevious
-          isNumberBased
-          currentPage={currentTablesPage}
-          pageSize={PAGE_SIZE}
-          paging={paging}
-          pagingHandler={tablePaginationHandler}
-          totalCount={tableInstanceCount}
-        />
+        {tableInstanceCount > PAGE_SIZE && tableData.length > 0 && (
+          <NextPrevious
+            isNumberBased
+            currentPage={currentTablesPage}
+            pageSize={PAGE_SIZE}
+            paging={paging}
+            pagingHandler={tablePaginationHandler}
+            totalCount={tableInstanceCount}
+          />
+        )}
       </>
     );
   };
@@ -681,63 +729,78 @@ const DatabaseSchemaPage: FunctionComponent = () => {
                 className="p-x-md p-t-lg"
                 data-testid="page-container"
                 gutter={[0, 12]}>
-                <Col span={24}>
-                  <Space align="center" className="justify-between w-full">
-                    <TitleBreadcrumb titleLinks={slashedTableName} />
-                    <ManageButton
-                      isRecursiveDelete
-                      allowSoftDelete={false}
-                      canDelete={databaseSchemaPermission.Delete}
-                      entityFQN={databaseSchemaFQN}
-                      entityId={databaseSchemaId}
-                      entityName={databaseSchemaName}
-                      entityType={EntityType.DATABASE_SCHEMA}
-                    />
-                  </Space>
-                </Col>
-                <Col span={24}>
-                  {extraInfo.map((info, index) => (
-                    <Space key={index}>
-                      <EntitySummaryDetails
+                {IsSchemaDetailsLoading ? (
+                  <Skeleton
+                    active
+                    paragraph={{
+                      rows: 3,
+                      width: ['20%', '80%', '60%'],
+                    }}
+                  />
+                ) : (
+                  <>
+                    <Col span={24}>
+                      <EntityPageInfo
+                        isRecursiveDelete
+                        allowSoftDelete={false}
+                        canDelete={databaseSchemaPermission.Delete}
                         currentOwner={databaseSchema?.owner}
-                        data={info}
+                        entityFieldThreads={getEntityFieldThreadCounts(
+                          EntityField.TAGS,
+                          entityFieldThreadCount
+                        )}
+                        entityFqn={databaseSchemaFQN}
+                        entityId={databaseSchemaId}
+                        entityName={databaseSchemaName}
+                        entityType={EntityType.DATABASE_SCHEMA}
+                        extraInfo={extraInfo}
+                        followersList={[]}
+                        isTagEditable={
+                          databaseSchemaPermission.EditAll ||
+                          databaseSchemaPermission.EditTags
+                        }
                         removeOwner={
                           databaseSchemaPermission.EditOwner ||
                           databaseSchemaPermission.EditAll
                             ? handleRemoveOwner
                             : undefined
                         }
+                        tags={tags}
+                        tagsHandler={onTagUpdate}
+                        tier={tier}
+                        titleLinks={slashedTableName}
                         updateOwner={
                           databaseSchemaPermission.EditOwner ||
                           databaseSchemaPermission.EditAll
                             ? handleUpdateOwner
                             : undefined
                         }
+                        onThreadLinkSelect={onThreadLinkSelect}
                       />
-                    </Space>
-                  ))}
-                </Col>
-                <Col data-testid="description-container" span={24}>
-                  <Description
-                    description={description}
-                    entityFieldThreads={getEntityFieldThreadCounts(
-                      EntityField.DESCRIPTION,
-                      entityFieldThreadCount
-                    )}
-                    entityFqn={databaseSchemaFQN}
-                    entityName={databaseSchemaName}
-                    entityType={EntityType.DATABASE_SCHEMA}
-                    hasEditAccess={
-                      databaseSchemaPermission.EditDescription ||
-                      databaseSchemaPermission.EditAll
-                    }
-                    isEdit={isEdit}
-                    onCancel={onCancel}
-                    onDescriptionEdit={onDescriptionEdit}
-                    onDescriptionUpdate={onDescriptionUpdate}
-                    onThreadLinkSelect={onThreadLinkSelect}
-                  />
-                </Col>
+                    </Col>
+                    <Col data-testid="description-container" span={24}>
+                      <Description
+                        description={description}
+                        entityFieldThreads={getEntityFieldThreadCounts(
+                          EntityField.DESCRIPTION,
+                          entityFieldThreadCount
+                        )}
+                        entityFqn={databaseSchemaFQN}
+                        entityName={databaseSchemaName}
+                        entityType={EntityType.DATABASE_SCHEMA}
+                        hasEditAccess={
+                          databaseSchemaPermission.EditDescription ||
+                          databaseSchemaPermission.EditAll
+                        }
+                        isEdit={isEdit}
+                        onCancel={onCancel}
+                        onDescriptionEdit={onDescriptionEdit}
+                        onDescriptionUpdate={onDescriptionUpdate}
+                        onThreadLinkSelect={onThreadLinkSelect}
+                      />
+                    </Col>
+                  </>
+                )}
                 <Col span={24}>
                   <Row className="m-t-xss">
                     <Col span={24}>
@@ -753,24 +816,24 @@ const DatabaseSchemaPage: FunctionComponent = () => {
                         <Fragment>{getSchemaTableList()}</Fragment>
                       )}
                       {activeTab === 2 && (
-                        <Row
-                          className="p-t-xss entity-feed-list bg-white border-1 rounded-4 shadow-base h-full"
-                          id="activityfeed">
-                          <Col offset={4} span={16}>
-                            <ActivityFeedList
-                              hideFeedFilter
-                              hideThreadFilter
-                              isEntityFeed
-                              withSidePanel
-                              className=""
-                              deletePostHandler={deletePostHandler}
-                              entityName={databaseSchemaName}
-                              feedList={entityThread}
-                              postFeedHandler={postFeedHandler}
-                              updateThreadHandler={updateThreadHandler}
-                            />
-                          </Col>
-                        </Row>
+                        <Card className="p-t-xss p-b-md">
+                          <Row className="entity-feed-list" id="activityfeed">
+                            <Col offset={4} span={16}>
+                              <ActivityFeedList
+                                hideFeedFilter
+                                hideThreadFilter
+                                isEntityFeed
+                                withSidePanel
+                                className=""
+                                deletePostHandler={deletePostHandler}
+                                entityName={databaseSchemaName}
+                                feedList={entityThread}
+                                postFeedHandler={postFeedHandler}
+                                updateThreadHandler={updateThreadHandler}
+                              />
+                            </Col>
+                          </Row>
+                        </Card>
                       )}
                       <Col
                         data-testid="observer-element"

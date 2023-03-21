@@ -129,8 +129,13 @@ class WebAnalyticEntityViewReportDataProcessor(DataProcessor):
                 entity = self.metadata.get_by_name(
                     ENTITIES[entity_obj.entity_type],
                     fqn=entity_obj.fqn,
-                    fields=["tags"],
+                    fields=["*"],
                 )
+
+                if not entity:
+                    # If a user visits an entity and then deletes this entity, we will try to get the entity
+                    # object as we will have a reference to it in the web analytics events.
+                    continue
 
                 try:
                     tags = (
@@ -166,6 +171,15 @@ class WebAnalyticEntityViewReportDataProcessor(DataProcessor):
                     )
                 except IndexError:
                     entity_href = None
+
+                if (
+                    owner_id is not None
+                    and event.eventData is not None
+                    and owner_id == str(event.eventData.userId.__root__)
+                ):  # type: ignore
+                    # we won't count views if the owner is the one visiting
+                    # the entity
+                    continue
 
                 refined_data[split_url[1]] = {
                     "entityType": ENTITIES[entity_type].__name__,
@@ -250,7 +264,7 @@ class WebAnalyticUserActivityReportDataProcessor(DataProcessor):
             user_entity: Optional[User] = self.metadata.get_by_id(
                 User,
                 user_id,
-                fields=["*"],
+                fields=["teams"],
             )
         except Exception as exc:
             logger.warning(f"Could not get user details - {exc}")

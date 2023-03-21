@@ -25,7 +25,6 @@ import org.openmetadata.schema.entity.data.Location;
 import org.openmetadata.schema.entity.services.StorageService;
 import org.openmetadata.schema.type.EntityReference;
 import org.openmetadata.schema.type.Relationship;
-import org.openmetadata.schema.type.TagLabel;
 import org.openmetadata.service.Entity;
 import org.openmetadata.service.exception.CatalogExceptionMessage;
 import org.openmetadata.service.resources.locations.LocationResource;
@@ -57,8 +56,7 @@ public class LocationRepository extends EntityRepository<Location> {
   public Location setFields(Location location, Fields fields) throws IOException {
     location.setService(getContainer(location.getId()));
     location.setPath(location.getPath());
-    location.setFollowers(fields.contains(FIELD_FOLLOWERS) ? getFollowers(location) : null);
-    return location;
+    return location.withFollowers(fields.contains(FIELD_FOLLOWERS) ? getFollowers(location) : null);
   }
 
   @Override
@@ -74,7 +72,7 @@ public class LocationRepository extends EntityRepository<Location> {
   @Transaction
   public final ResultList<Location> listPrefixesBefore(Fields fields, String fqn, int limitParam, String before)
       throws IOException {
-    String service = FullyQualifiedName.getServiceName(fqn);
+    String service = FullyQualifiedName.getRoot(fqn);
     // Reverse scrolling - Get one extra result used for computing before cursor
     List<String> jsons =
         daoCollection
@@ -110,7 +108,7 @@ public class LocationRepository extends EntityRepository<Location> {
   @Transaction
   public final ResultList<Location> listPrefixesAfter(Fields fields, String fqn, int limitParam, String after)
       throws IOException {
-    String service = FullyQualifiedName.getServiceName(fqn);
+    String service = FullyQualifiedName.getRoot(fqn);
     // forward scrolling, if after == null then first page is being asked
     List<String> jsons =
         daoCollection
@@ -165,18 +163,11 @@ public class LocationRepository extends EntityRepository<Location> {
 
   @Override
   public void storeEntity(Location location, boolean update) throws IOException {
-    // Relationships and fields such as href are derived and not stored as part of json
-    EntityReference owner = location.getOwner();
+    // Relationships and fields such as service are derived and not stored as part of json
     EntityReference service = location.getService();
-    List<TagLabel> tags = location.getTags();
-
-    // Don't store owner, href and tags as JSON. Build it on the fly based on relationships
-    location.withOwner(null).withService(null).withHref(null).withTags(null);
-
+    location.withService(null);
     store(location, update);
-
-    // Restore the relationships
-    location.withOwner(owner).withService(service).withTags(tags);
+    location.withService(service);
   }
 
   @Override
@@ -196,11 +187,14 @@ public class LocationRepository extends EntityRepository<Location> {
   }
 
   private EntityReference getService(EntityReference service) throws IOException {
-    if (service.getType().equalsIgnoreCase(Entity.STORAGE_SERVICE)) {
-      return daoCollection.storageServiceDAO().findEntityReferenceById(service.getId());
+    if (service.getId() != null) {
+      if (service.getType().equalsIgnoreCase(Entity.STORAGE_SERVICE)) {
+        return daoCollection.storageServiceDAO().findEntityReferenceById(service.getId());
+      }
+      throw new IllegalArgumentException(
+          CatalogExceptionMessage.invalidServiceEntity(service.getType(), Entity.LOCATION, STORAGE_SERVICE));
     }
-    throw new IllegalArgumentException(
-        CatalogExceptionMessage.invalidServiceEntity(service.getType(), Entity.LOCATION, STORAGE_SERVICE));
+    return daoCollection.storageServiceDAO().findEntityReferenceByName(service.getFullyQualifiedName());
   }
 
   public List<EntityReference> getEntityDetails(String id) throws IOException {

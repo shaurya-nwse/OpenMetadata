@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -12,10 +12,19 @@
  */
 
 import { DefaultOptionType } from 'antd/lib/select';
-import { JsonTree } from 'react-awesome-query-builder';
+import { SORT_ORDER } from 'enums/common.enum';
+import { Container } from 'generated/entity/data/container';
+import { Database } from 'generated/entity/data/database';
+import { DatabaseSchema } from 'generated/entity/data/databaseSchema';
 import { SearchIndex } from '../../enums/search.enum';
+import { Dashboard } from '../../generated/entity/data/dashboard';
+import { Mlmodel } from '../../generated/entity/data/mlmodel';
+import { Pipeline } from '../../generated/entity/data/pipeline';
+import { Table } from '../../generated/entity/data/table';
+import { Topic } from '../../generated/entity/data/topic';
 import { SearchResponse } from '../../interface/search.interface';
-import { FilterObject } from '../AdvancedSearch/AdvancedSearch.interface';
+import { SearchDropdownOption } from '../SearchDropdown/SearchDropdown.interface';
+import { FilterObject } from './AdvanceSearchProvider/AdvanceSearchProvider.interface';
 
 export type UrlParams = {
   searchQuery: string;
@@ -27,7 +36,8 @@ export type ExploreSearchIndex =
   | SearchIndex.PIPELINE
   | SearchIndex.DASHBOARD
   | SearchIndex.MLMODEL
-  | SearchIndex.TOPIC;
+  | SearchIndex.TOPIC
+  | SearchIndex.CONTAINER;
 
 export type ExploreSearchIndexKey =
   | 'TABLE'
@@ -43,8 +53,6 @@ export interface ExploreProps {
 
   searchResults?: SearchResponse<ExploreSearchIndex>;
 
-  advancedSearchJsonTree?: JsonTree;
-  onChangeAdvancedSearchJsonTree: (jsonTree: JsonTree | undefined) => void;
   onChangeAdvancedSearchQueryFilter: (
     queryFilter: Record<string, unknown> | undefined
   ) => void;
@@ -59,7 +67,7 @@ export interface ExploreProps {
   onChangeSortValue: (sortValue: string) => void;
 
   sortOrder: string;
-  onChangeSortOder: (sortOder: string) => void;
+  onChangeSortOder: (sortOder: SORT_ORDER) => void;
 
   showDeleted: boolean;
   onChangeShowDeleted: (showDeleted: boolean) => void;
@@ -73,7 +81,7 @@ export interface ExploreProps {
 export interface ExploreQuickFilterField {
   key: string;
   label: string;
-  value: string[] | undefined;
+  value: SearchDropdownOption[] | undefined;
 }
 
 export interface ExploreQuickFilterProps {
@@ -90,4 +98,20 @@ export interface SearchInputProps {
   handleSearch: (value: string) => void;
   handleSelect: (value: string) => void;
   handleClear: () => void;
+}
+
+// Type for all the explore tab entities
+export type EntityUnion =
+  | Table
+  | Topic
+  | Dashboard
+  | Pipeline
+  | Mlmodel
+  | Container
+  | DatabaseSchema
+  | Database;
+
+export interface EntityDetailsObjectInterface {
+  details: EntityUnion;
+  entityType: string;
 }

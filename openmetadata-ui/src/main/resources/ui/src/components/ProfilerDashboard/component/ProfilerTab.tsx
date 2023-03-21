@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -13,16 +13,18 @@
 
 import { Card, Col, Row, Statistic, Typography } from 'antd';
 import { AxiosError } from 'axios';
-import { sortBy } from 'lodash';
+import DataDistributionHistogram from 'components/Chart/DataDistributionHistogram.component';
+import { first, isString, last, sortBy } from 'lodash';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
-import { getListTestCase } from '../../../axiosAPIs/testAPI';
+import { getListTestCase } from 'rest/testAPI';
 import { API_RES_MAX_SIZE } from '../../../constants/constants';
 import {
   INITIAL_COUNT_METRIC_VALUE,
   INITIAL_MATH_METRIC_VALUE,
   INITIAL_PROPORTION_METRIC_VALUE,
+  INITIAL_QUARTILE_METRIC_VALUE,
   INITIAL_SUM_METRIC_VALUE,
   INITIAL_TEST_RESULT_SUMMARY,
 } from '../../../constants/profiler.constant';
@@ -58,6 +60,10 @@ const ProfilerTab: React.FC<ProfilerTabProps> = ({
   const [sumMetrics, setSumMetrics] = useState<MetricChartType>(
     INITIAL_SUM_METRIC_VALUE
   );
+  const [isMinMaxStringData, setIsMinMaxStringData] = useState(false);
+  const [quartileMetrics, setQuartileMetrics] = useState<MetricChartType>(
+    INITIAL_QUARTILE_METRIC_VALUE
+  );
   const [tableTests, setTableTests] = useState<TableTestsType>({
     tests: [],
     results: INITIAL_TEST_RESULT_SUMMARY,
@@ -66,15 +72,21 @@ const ProfilerTab: React.FC<ProfilerTabProps> = ({
   const tableState = useMemo(
     () => [
       {
-        title: t('label.row-count'),
+        title: t('label.entity-count', {
+          entity: t('label.row'),
+        }),
         value: tableProfile?.rowCount || 0,
       },
       {
-        title: t('label.column-count'),
+        title: t('label.column-entity', {
+          entity: t('label.count'),
+        }),
         value: tableProfile?.columnCount || 0,
       },
       {
-        title: `${t('label.table-sample')} %`,
+        title: `${t('label.table-entity-text', {
+          entityText: t('label.sample'),
+        })} %`,
         value: `${tableProfile?.profileSample || 100}%`,
       },
     ],
@@ -99,12 +111,20 @@ const ProfilerTab: React.FC<ProfilerTabProps> = ({
     ];
   }, [tableTests]);
 
+  const { firstDay, currentDay } = useMemo(() => {
+    return {
+      firstDay: last(profilerData),
+      currentDay: first(profilerData),
+    };
+  }, [profilerData]);
+
   const createMetricsChartData = () => {
     const updateProfilerData = sortBy(profilerData, 'timestamp');
     const countMetricData: MetricChartType['data'] = [];
     const proportionMetricData: MetricChartType['data'] = [];
     const mathMetricData: MetricChartType['data'] = [];
     const sumMetricData: MetricChartType['data'] = [];
+    const quartileMetricData: MetricChartType['data'] = [];
     updateProfilerData.forEach((col) => {
       const x = getFormattedDateFromSeconds(col.timestamp);
 
@@ -126,10 +146,9 @@ const ProfilerTab: React.FC<ProfilerTabProps> = ({
       mathMetricData.push({
         name: x,
         timestamp: col.timestamp || 0,
-        max: (col.max as number) || 0,
-        min: (col.min as number) || 0,
+        max: col.max || 0,
+        min: col.min || 0,
         mean: col.mean || 0,
-        median: col.median || 0,
       });
 
       proportionMetricData.push({
@@ -138,6 +157,15 @@ const ProfilerTab: React.FC<ProfilerTabProps> = ({
         distinctProportion: Math.round((col.distinctProportion || 0) * 100),
         nullProportion: Math.round((col.nullProportion || 0) * 100),
         uniqueProportion: Math.round((col.uniqueProportion || 0) * 100),
+      });
+
+      quartileMetricData.push({
+        name: x,
+        timestamp: col.timestamp || 0,
+        firstQuartile: col.firstQuartile || 0,
+        thirdQuartile: col.thirdQuartile || 0,
+        interQuartileRange: col.interQuartileRange || 0,
+        median: col.median || 0,
       });
     });
 
@@ -165,6 +193,11 @@ const ProfilerTab: React.FC<ProfilerTabProps> = ({
       ...item,
       latestValue: sumMetricData[sumMetricData.length - 1]?.[item.dataKey] || 0,
     }));
+    const quartileMetricInfo = quartileMetrics.information.map((item) => ({
+      ...item,
+      latestValue:
+        quartileMetricData[quartileMetricData.length - 1]?.[item.dataKey] || 0,
+    }));
 
     setCountMetrics((pre) => ({
       ...pre,
@@ -186,6 +219,17 @@ const ProfilerTab: React.FC<ProfilerTabProps> = ({
       information: sumMetricInfo,
       data: sumMetricData,
     }));
+    setQuartileMetrics((pre) => ({
+      ...pre,
+      information: quartileMetricInfo,
+      data: quartileMetricData,
+    }));
+
+    // only min/max category can be string
+    const isMinMaxString =
+      isString(updateProfilerData[0]?.min) ||
+      isString(updateProfilerData[0]?.max);
+    setIsMinMaxStringData(isMinMaxString);
   };
 
   const fetchAllTests = async () => {
@@ -221,25 +265,32 @@ const ProfilerTab: React.FC<ProfilerTabProps> = ({
   }, []);
 
   return (
-    <Row data-testid="profiler-tab-container" gutter={[16, 16]}>
+    <Row
+      className="m-b-lg"
+      data-testid="profiler-tab-container"
+      gutter={[16, 16]}>
       <Col span={8}>
         <Card className="tw-rounded-md tw-border tw-h-full">
           <Row gutter={16}>
             <Col span={16}>
               <p className="tw-font-medium tw-text-base">
-                {t('label.column-summary')}
+                {t('label.column-entity', { entity: t('label.summary') })}
               </p>
-
               <Typography.Paragraph
                 className="ant-typography-ellipsis-custom tw-text-grey-muted"
                 data-testid="description"
                 ellipsis={{ tooltip: true, rows: 4 }}>
-                {activeColumnDetails.description || t('label.no-description')}
+                {activeColumnDetails.description ||
+                  t('label.no-entity', {
+                    entity: t('label.description'),
+                  })}
               </Typography.Paragraph>
             </Col>
             <Col data-testid="data-type-container" span={8}>
               <Statistic
-                title={t('label.data-type')}
+                title={t('label.data-entity', {
+                  entity: t('label.type'),
+                })}
                 value={activeColumnDetails.dataType}
                 valueStyle={{
                   color: '#1890FF',
@@ -254,14 +305,18 @@ const ProfilerTab: React.FC<ProfilerTabProps> = ({
       <Col span={8}>
         <ProfilerSummaryCard
           data={tableState}
-          title={t('label.table-metrics-summary')}
+          title={t('label.table-entity-text', {
+            entityText: t('label.metrics-summary'),
+          })}
         />
       </Col>
       <Col span={8}>
         <ProfilerSummaryCard
           showIndicator
           data={testSummary}
-          title={t('label.table-tests-summary')}
+          title={t('label.table-entity-text', {
+            entityText: t('label.tests-summary'),
+          })}
         />
       </Col>
       <Col span={24}>
@@ -275,10 +330,39 @@ const ProfilerTab: React.FC<ProfilerTabProps> = ({
         />
       </Col>
       <Col span={24}>
-        <ProfilerDetailsCard chartCollection={mathMetrics} name="math" />
+        <ProfilerDetailsCard
+          chartCollection={mathMetrics}
+          name="math"
+          // only min/max category can be string
+          showYAxisCategory={isMinMaxStringData}
+        />
       </Col>
       <Col span={24}>
         <ProfilerDetailsCard chartCollection={sumMetrics} name="sum" />
+      </Col>
+      <Col span={24}>
+        <ProfilerDetailsCard
+          chartCollection={quartileMetrics}
+          name="quartile"
+        />
+      </Col>
+      <Col span={24}>
+        <Card className="shadow-none" data-testid="histogram-metrics">
+          <Row gutter={[16, 16]}>
+            <Col span={4}>
+              <Typography.Text
+                className="text-grey-body"
+                data-testid="data-distribution-title">
+                {t('label.data-distribution')}
+              </Typography.Text>
+            </Col>
+            <Col span={20}>
+              <DataDistributionHistogram
+                data={{ firstDayData: firstDay, currentDayData: currentDay }}
+              />
+            </Col>
+          </Row>
+        </Card>
       </Col>
     </Row>
   );

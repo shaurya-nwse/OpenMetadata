@@ -21,11 +21,9 @@ import static org.openmetadata.service.util.TestUtils.assertListNull;
 import static org.openmetadata.service.util.TestUtils.assertResponse;
 
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,14 +32,12 @@ import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Response.Status;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.client.HttpResponseException;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.openmetadata.schema.api.data.CreateLocation;
 import org.openmetadata.schema.entity.data.Location;
 import org.openmetadata.schema.type.EntityReference;
 import org.openmetadata.service.Entity;
-import org.openmetadata.service.OpenMetadataApplicationTest;
 import org.openmetadata.service.resources.EntityResourceTest;
 import org.openmetadata.service.resources.locations.LocationResource.LocationList;
 import org.openmetadata.service.util.FullyQualifiedName;
@@ -52,11 +48,10 @@ import org.openmetadata.service.util.TestUtils;
 public class LocationResourceTest extends EntityResourceTest<Location, CreateLocation> {
   public LocationResourceTest() {
     super(Entity.LOCATION, Location.class, LocationList.class, "locations", LocationResource.FIELDS);
-  }
-
-  @BeforeAll
-  public void setup(TestInfo test) throws IOException, URISyntaxException {
-    super.setup(test);
+    // TODO quoted location is not allowed by the Location listPrefix APIs
+    // TODO "." is not allowed
+    // supportedNameCharacters = "_'+#- .()$/" + EntityResourceTest.RANDOM_STRING_GENERATOR.generate(1);
+    supportedNameCharacters = "_'-";
   }
 
   @Override
@@ -79,12 +74,7 @@ public class LocationResourceTest extends EntityResourceTest<Location, CreateLoc
       throws HttpResponseException {
     assertEquals(createRequest.getPath(), location.getPath());
     // Validate service
-    EntityReference expectedService = createRequest.getService();
-    if (expectedService != null) {
-      TestUtils.validateEntityReference(location.getService());
-      assertEquals(expectedService.getId(), location.getService().getId());
-      assertEquals(expectedService.getType(), location.getService().getType());
-    }
+    assertReference(createRequest.getService(), location.getService());
     TestUtils.validateTags(createRequest.getTags(), location.getTags());
   }
 
@@ -106,8 +96,7 @@ public class LocationResourceTest extends EntityResourceTest<Location, CreateLoc
   }
 
   private List<EntityReference> getAssociatedEntity(Location location) throws HttpResponseException {
-    WebTarget target =
-        OpenMetadataApplicationTest.getResource(String.format("locations/association/%s", location.getId()));
+    WebTarget target = getResource(String.format("locations/association/%s", location.getId()));
     return (List<EntityReference>) TestUtils.get(target, List.class, ADMIN_AUTH_HEADERS);
   }
 
@@ -129,21 +118,15 @@ public class LocationResourceTest extends EntityResourceTest<Location, CreateLoc
   @Test
   void get_locationListWithPrefix_2xx(TestInfo test) throws HttpResponseException {
     // Create some nested locations.
-    List<String> paths = Arrays.asList("/" + test.getDisplayName(), "/dwh", "/catalog", "/schema", "/table");
-    String locationName =
-        paths.stream()
-            .reduce(
-                "",
-                (subtotal, element) -> {
-                  try {
-                    CreateLocation create =
-                        new CreateLocation().withName(subtotal + element).withService(AWS_STORAGE_SERVICE_REFERENCE);
-                    createEntity(create, ADMIN_AUTH_HEADERS);
-                  } catch (HttpResponseException e) {
-                    throw new RuntimeException(e);
-                  }
-                  return subtotal + element;
-                });
+    String[] paths = {getEntityName(test), "dwh", "catalog", "schema", "table"};
+
+    CreateLocation create = new CreateLocation().withService(AWS_STORAGE_SERVICE_REFERENCE);
+    String locationName = "";
+    for (String path : paths) {
+      locationName += "/" + path;
+      System.out.println("Creating entity " + locationName);
+      createEntity(create.withName(locationName), ADMIN_AUTH_HEADERS);
+    }
 
     // List all locations
     LocationList allLocations =
@@ -154,7 +137,7 @@ public class LocationResourceTest extends EntityResourceTest<Location, CreateLoc
             null,
             null,
             ADMIN_AUTH_HEADERS);
-    assertEquals(5, allLocations.getData().size(), "Wrong number of prefix locations");
+    assertEquals(paths.length, allLocations.getData().size(), "Wrong number of prefix locations");
   }
 
   @Test
@@ -189,7 +172,7 @@ public class LocationResourceTest extends EntityResourceTest<Location, CreateLoc
     }
   }
 
-  public static Location updateLocation(CreateLocation create, Status status, Map<String, String> authHeaders)
+  public Location updateLocation(CreateLocation create, Status status, Map<String, String> authHeaders)
       throws HttpResponseException {
     return TestUtils.put(getResource("locations"), create, Location.class, status, authHeaders);
   }
@@ -214,7 +197,7 @@ public class LocationResourceTest extends EntityResourceTest<Location, CreateLoc
     return location;
   }
 
-  public static LocationList listPrefixes(
+  public LocationList listPrefixes(
       String fields, String fqn, Integer limitParam, String before, String after, Map<String, String> authHeaders)
       throws HttpResponseException {
     String encodedFqn = URLEncoder.encode(fqn, StandardCharsets.UTF_8);

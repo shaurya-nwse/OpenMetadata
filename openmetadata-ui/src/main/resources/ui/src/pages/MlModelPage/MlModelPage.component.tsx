@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -12,59 +12,41 @@
  */
 
 import { AxiosError } from 'axios';
+import ErrorPlaceHolder from 'components/common/error-with-placeholder/ErrorPlaceHolder';
+import Loader from 'components/Loader/Loader';
+import MlModelDetailComponent from 'components/MlModelDetail/MlModelDetail.component';
+import { usePermissionProvider } from 'components/PermissionProvider/PermissionProvider';
+import { ResourceEntity } from 'components/PermissionProvider/PermissionProvider.interface';
 import { compare, Operation } from 'fast-json-patch';
 import { isEmpty, isNil, isUndefined, omitBy } from 'lodash';
 import { observer } from 'mobx-react';
-import {
-  EntityFieldThreadCount,
-  LeafNodes,
-  LineagePos,
-  LoadingNodeState,
-} from 'Models';
-import React, { Fragment, useEffect, useMemo, useState } from 'react';
-import { useHistory, useParams } from 'react-router-dom';
-import AppState from '../../AppState';
-import {
-  getAllFeeds,
-  postFeedById,
-  postThread,
-} from '../../axiosAPIs/feedsAPI';
-import { getLineageByFQN } from '../../axiosAPIs/lineageAPI';
-import { addLineage, deleteLineageEdge } from '../../axiosAPIs/miscAPI';
+import { getAllFeeds, postFeedById, postThread } from 'rest/feedsAPI';
 import {
   addFollower,
   getMlModelByFQN,
   patchMlModelDetails,
   removeFollower,
-} from '../../axiosAPIs/mlModelAPI';
-import ErrorPlaceHolder from '../../components/common/error-with-placeholder/ErrorPlaceHolder';
-import {
-  Edge,
-  EdgeData,
-} from '../../components/EntityLineage/EntityLineage.interface';
-import Loader from '../../components/Loader/Loader';
-import MlModelDetailComponent from '../../components/MlModelDetail/MlModelDetail.component';
-import { usePermissionProvider } from '../../components/PermissionProvider/PermissionProvider';
-import { ResourceEntity } from '../../components/PermissionProvider/PermissionProvider.interface';
-import { getMlModelPath } from '../../constants/constants';
+} from 'rest/mlModelAPI';
+
+import React, { Fragment, useEffect, useMemo, useState } from 'react';
+import { useHistory, useParams } from 'react-router-dom';
+import AppState from '../../AppState';
+import { getMlModelPath, getVersionPath } from '../../constants/constants';
 import { NO_PERMISSION_TO_VIEW } from '../../constants/HelperTextUtil';
 import { EntityType, TabSpecificField } from '../../enums/entity.enum';
 import { FeedFilter } from '../../enums/mydata.enum';
 import { CreateThread } from '../../generated/api/feed/createThread';
 import { Mlmodel } from '../../generated/entity/data/mlmodel';
 import { Post, Thread, ThreadType } from '../../generated/entity/feed/thread';
-import {
-  EntityLineage,
-  EntityReference,
-} from '../../generated/type/entityLineage';
 import { Paging } from '../../generated/type/paging';
+import { EntityFieldThreadCount } from '../../interface/feed.interface';
 import jsonData from '../../jsons/en';
 import {
   getCurrentUserId,
   getEntityMissingError,
   getFeedCounts,
 } from '../../utils/CommonUtils';
-import { getEntityFeedLink, getEntityLineage } from '../../utils/EntityUtils';
+import { getEntityFeedLink } from '../../utils/EntityUtils';
 import { deletePost, updateThreadData } from '../../utils/FeedUtils';
 import {
   defaultFields,
@@ -82,16 +64,6 @@ const MlModelPage = () => {
   const [activeTab, setActiveTab] = useState<number>(getCurrentMlModelTab(tab));
   const USERId = getCurrentUserId();
 
-  const [entityLineage, setEntityLineage] = useState<EntityLineage>(
-    {} as EntityLineage
-  );
-  const [leafNodes, setLeafNodes] = useState<LeafNodes>({} as LeafNodes);
-  const [isNodeLoading, setNodeLoading] = useState<LoadingNodeState>({
-    id: undefined,
-    state: false,
-  });
-  const [isLineageLoading, setIsLineageLoading] = useState<boolean>(false);
-
   const [mlModelPermissions, setPipelinePermissions] = useState(
     DEFAULT_ENTITY_PERMISSION
   );
@@ -108,6 +80,8 @@ const MlModelPage = () => {
   const [entityFieldTaskCount, setEntityFieldTaskCount] = useState<
     EntityFieldThreadCount[]
   >([]);
+
+  const [currentVersion, setCurrentVersion] = useState<string>();
 
   // get current user details
   const currentUser = useMemo(
@@ -132,100 +106,6 @@ const MlModelPage = () => {
     } finally {
       setIsDetailLoading(false);
     }
-  };
-
-  const getLineageData = () => {
-    setIsLineageLoading(true);
-    getLineageByFQN(mlModelFqn, EntityType.MLMODEL)
-      .then((res) => {
-        if (res) {
-          setEntityLineage(res);
-        } else {
-          showErrorToast(jsonData['api-error-messages']['fetch-lineage-error']);
-        }
-      })
-      .catch((err: AxiosError) => {
-        showErrorToast(
-          err,
-          jsonData['api-error-messages']['fetch-lineage-error']
-        );
-      })
-      .finally(() => {
-        setIsLineageLoading(false);
-      });
-  };
-
-  const setLeafNode = (val: EntityLineage, pos: LineagePos) => {
-    if (pos === 'to' && val.downstreamEdges?.length === 0) {
-      setLeafNodes((prev) => ({
-        ...prev,
-        downStreamNode: [...(prev.downStreamNode ?? []), val.entity.id],
-      }));
-    }
-    if (pos === 'from' && val.upstreamEdges?.length === 0) {
-      setLeafNodes((prev) => ({
-        ...prev,
-        upStreamNode: [...(prev.upStreamNode ?? []), val.entity.id],
-      }));
-    }
-  };
-
-  const entityLineageHandler = (lineage: EntityLineage) => {
-    setEntityLineage(lineage);
-  };
-
-  const loadNodeHandler = (node: EntityReference, pos: LineagePos) => {
-    setNodeLoading({ id: node.id, state: true });
-    getLineageByFQN(node.fullyQualifiedName ?? '', node.type)
-      .then((res) => {
-        if (res) {
-          setLeafNode(res, pos);
-          setEntityLineage(getEntityLineage(entityLineage, res, pos));
-        } else {
-          showErrorToast(
-            jsonData['api-error-messages']['fetch-lineage-node-error']
-          );
-        }
-        setTimeout(() => {
-          setNodeLoading((prev) => ({ ...prev, state: false }));
-        }, 500);
-      })
-      .catch((err: AxiosError) => {
-        showErrorToast(
-          err,
-          jsonData['api-error-messages']['fetch-lineage-node-error']
-        );
-      });
-  };
-
-  const addLineageHandler = (edge: Edge): Promise<void> => {
-    return new Promise<void>((resolve, reject) => {
-      addLineage(edge)
-        .then(() => {
-          resolve();
-        })
-        .catch((err: AxiosError) => {
-          showErrorToast(
-            err,
-            jsonData['api-error-messages']['add-lineage-error']
-          );
-          reject();
-        });
-    });
-  };
-
-  const removeLineageHandler = (data: EdgeData) => {
-    deleteLineageEdge(
-      data.fromEntity,
-      data.fromId,
-      data.toEntity,
-      data.toId
-    ).catch((err: AxiosError) => {
-      showErrorToast(
-        err,
-        jsonData['api-error-messages']['delete-lineage-error']
-      );
-    });
   };
 
   const activeTabHandler = (tabValue: number) => {
@@ -288,14 +168,6 @@ const MlModelPage = () => {
   const fetchTabSpecificData = (tabField = '') => {
     switch (tabField) {
       case TabSpecificField.LINEAGE: {
-        if (!mlModelDetail.deleted) {
-          if (isEmpty(entityLineage)) {
-            getLineageData();
-          }
-
-          break;
-        }
-
         break;
       }
       case TabSpecificField.ACTIVITY_FEED: {
@@ -316,6 +188,7 @@ const MlModelPage = () => {
         const mlModelData = response;
         if (mlModelData) {
           setMlModelDetail(mlModelData);
+          setCurrentVersion(mlModelData.version?.toString());
         } else {
           throw jsonData['api-error-messages']['unexpected-server-response'];
         }
@@ -338,7 +211,8 @@ const MlModelPage = () => {
     try {
       const response = await saveUpdatedMlModelData(updatedMlModel);
       if (response) {
-        const { description } = response;
+        const { description, version } = response;
+        setCurrentVersion(version?.toString());
         setMlModelDetail((preVDetail) => ({
           ...preVDetail,
           description: description,
@@ -406,6 +280,7 @@ const MlModelPage = () => {
             ...preVDetail,
             tags: res.tags,
           }));
+          setCurrentVersion(res.version?.toString());
         } else {
           throw jsonData['api-error-messages']['update-tags-error'];
         }
@@ -428,6 +303,7 @@ const MlModelPage = () => {
               owner: res.owner,
               tags: res.tags,
             }));
+            setCurrentVersion(res.version?.toString());
             resolve();
           } else {
             showErrorToast(
@@ -454,6 +330,7 @@ const MlModelPage = () => {
           ...preVDetail,
           mlFeatures: response.mlFeatures,
         }));
+        setCurrentVersion(response.version?.toString());
       } else {
         throw jsonData['api-error-messages']['unexpected-error'];
       }
@@ -468,6 +345,7 @@ const MlModelPage = () => {
 
       if (data) {
         setMlModelDetail(data);
+        setCurrentVersion(data.version?.toString());
       } else {
         throw jsonData['api-error-messages']['update-entity-error'];
       }
@@ -518,6 +396,12 @@ const MlModelPage = () => {
     }
   };
 
+  const versionHandler = () => {
+    history.push(
+      getVersionPath(EntityType.MLMODEL, mlModelFqn, currentVersion as string)
+    );
+  };
+
   const deletePostHandler = (
     threadId: string,
     postId: string,
@@ -550,16 +434,6 @@ const MlModelPage = () => {
           fetchFeedHandler={handleFeedFetchFromFeedList}
           followMlModelHandler={followMlModel}
           isEntityThreadLoading={isEntityThreadLoading}
-          lineageTabData={{
-            loadNodeHandler,
-            addLineageHandler,
-            removeLineageHandler,
-            entityLineageHandler,
-            isLineageLoading,
-            entityLineage,
-            lineageLeafNodes: leafNodes,
-            isNodeLoading,
-          }}
           mlModelDetail={mlModelDetail}
           paging={paging}
           postFeedHandler={postFeedHandler}
@@ -569,6 +443,8 @@ const MlModelPage = () => {
           unfollowMlModelHandler={unfollowMlModel}
           updateMlModelFeatures={updateMlModelFeatures}
           updateThreadHandler={updateThreadHandler}
+          version={currentVersion}
+          versionHandler={versionHandler}
           onExtensionUpdate={handleExtentionUpdate}
         />
       );

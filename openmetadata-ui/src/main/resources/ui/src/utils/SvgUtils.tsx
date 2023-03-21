@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -24,12 +24,12 @@ import IconWelcomePopper from '../assets/img/welcome-popper-icon.png';
 import IconCommentPlus from '../assets/svg/add-chat.svg';
 import IconAddReaction from '../assets/svg/add-reaction-emoji.svg';
 import IconAdmin from '../assets/svg/admin.svg';
-import IconAlertBell from '../assets/svg/alert-bell.svg';
 import IconAllActivity from '../assets/svg/all-activity.svg';
 import IconAnnouncementsBasicPrimary from '../assets/svg/announcements-basic-primary.svg';
 import IconAnnouncementsBlack from '../assets/svg/announcements-black.svg';
 import IconAnnouncementsPrimary from '../assets/svg/announcements-primary.svg';
 import IconAnnouncementsPurple from '../assets/svg/announcements-purple.svg';
+import IconAnnouncementsYellow from '../assets/svg/announcements-yellow.svg';
 import IconAnnouncements from '../assets/svg/announcements.svg';
 import IconAPI from '../assets/svg/api.svg';
 import IconArrowDownLight from '../assets/svg/arrow-down-light.svg';
@@ -79,6 +79,7 @@ import IconForeignKey from '../assets/svg/foriegnKey.svg';
 import IconFullScreen from '../assets/svg/full-screen.svg';
 import IconGithubStar from '../assets/svg/github-star.svg';
 import IconHidePassword from '../assets/svg/hide-password.svg';
+import IconAlertBell from '../assets/svg/ic-alert-bell.svg';
 import IconAllApplicationPrimary from '../assets/svg/ic-all-application-primary.svg';
 import IconAllApplication from '../assets/svg/ic-all-application.svg';
 import IconCheckCircle from '../assets/svg/ic-check-circle.svg';
@@ -109,6 +110,7 @@ import IconMentionsPrimary from '../assets/svg/ic-mentions-primary.svg';
 import IconMentions from '../assets/svg/ic-mentions.svg';
 import IconMenu from '../assets/svg/ic-menu.svg';
 import IconMyData from '../assets/svg/ic-mydata.svg';
+import IconContainer from '../assets/svg/ic-object-store.svg';
 import IconQuality from '../assets/svg/ic-quality.svg';
 import IconReply from '../assets/svg/ic-reply.svg';
 import IconReports from '../assets/svg/ic-reports.svg';
@@ -163,7 +165,7 @@ import IconPaperPlane from '../assets/svg/paper-plane.svg';
 import IconPendingBadge from '../assets/svg/pending-badge.svg';
 import IconPipelineGrey from '../assets/svg/pipeline-grey.svg';
 import IconPipeline from '../assets/svg/pipeline.svg';
-import IconPlusPrimery from '../assets/svg/plus-primery.svg';
+import IconPlusPrimary from '../assets/svg/plus-primary.svg';
 import IconPlus from '../assets/svg/plus.svg';
 import IconPolicies from '../assets/svg/policies.svg';
 import IconProfilerColor from '../assets/svg/profiler-color.svg';
@@ -308,7 +310,7 @@ export const Icons = {
   ICON_DEPLOY: 'icon-deploy',
   TOUR: 'tour',
   ICON_PLUS: 'icon-plus',
-  ICON_PLUS_PRIMERY: 'icon-plus-primary',
+  ICON_PLUS_PRIMARY: 'icon-plus-primary',
   ICON_PLUS_PRIMARY_OUTLINED: 'icon-plus-primary-outlined',
   ICON_MINUS: 'icon-minus',
   TAG: 'icon-tag',
@@ -340,6 +342,7 @@ export const Icons = {
   ANNOUNCEMENT_BLACK: 'icon-announcement-black',
   ANNOUNCEMENT_PURPLE: 'icon-announcement-purple',
   ANNOUNCEMENT_PRIMARY: 'icon-announcement-primary',
+  ANNOUNCEMENT_YELLOW: 'icon-announcement-yellow',
   ANNOUNCEMENT_BASIC_PRIMARY: 'icon-announcement-basic-primary',
   CHEVRON_DOWN: 'icon-chevron-down',
   ICON_UP: 'icon-up',
@@ -399,7 +402,13 @@ export const Icons = {
   ARROW_RIGHT_LIGHT: 'arrow-right-light',
   ARROW_DOWN_LIGHT: 'arrow-down-light',
   DRAG: 'drag',
+  CONTAINER: 'container',
 };
+
+/**
+ * @deprecated SVGIcons is deprecated, Please use SVG image as ReactComponent wherever it is required
+ * e.g import { ReactComponent as Icon } from '<PATH_NAME>';
+ */
 
 const SVGIcons: FunctionComponent<Props> = ({ icon, ...props }: Props) => {
   let IconComponent;
@@ -769,8 +778,8 @@ const SVGIcons: FunctionComponent<Props> = ({ icon, ...props }: Props) => {
       IconComponent = IconPlus;
 
       break;
-    case Icons.ICON_PLUS_PRIMERY:
-      IconComponent = IconPlusPrimery;
+    case Icons.ICON_PLUS_PRIMARY:
+      IconComponent = IconPlusPrimary;
 
       break;
     case Icons.ICON_MINUS:
@@ -909,6 +918,10 @@ const SVGIcons: FunctionComponent<Props> = ({ icon, ...props }: Props) => {
       break;
     case Icons.ANNOUNCEMENT_PURPLE:
       IconComponent = IconAnnouncementsPurple;
+
+      break;
+    case Icons.ANNOUNCEMENT_YELLOW:
+      IconComponent = IconAnnouncementsYellow;
 
       break;
     case Icons.ANNOUNCEMENT_BLACK:
@@ -1173,6 +1186,10 @@ const SVGIcons: FunctionComponent<Props> = ({ icon, ...props }: Props) => {
       IconComponent = IconNoDataFoundPlaceHolder;
 
       break;
+    case Icons.CONTAINER:
+      IconComponent = IconContainer;
+
+      break;
 
     default:
       IconComponent = null;
@@ -1185,7 +1202,9 @@ const SVGIcons: FunctionComponent<Props> = ({ icon, ...props }: Props) => {
       // eslint-disable-next-line react/prop-types
       className={`svg-icon ${props.className ? props.className : ''}`}
       data-testid="image"
+      height="16px"
       src={IconComponent}
+      width="16px"
       {...omit(props, ['src', 'className'])}
     />
   ) : null;

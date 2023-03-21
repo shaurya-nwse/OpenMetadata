@@ -103,6 +103,18 @@
     "connection": {
       "$ref": "#/definitions/mlModelConnection"
     },
+    "testConnectionResult": {
+      "description": "Last test connection results for this service",
+      "$ref": "connections/testConnectionResult.json"
+    },
+    "tags": {
+      "description": "Tags for this MlModel Service.",
+      "type": "array",
+      "items": {
+        "$ref": "../../type/tagLabel.json"
+      },
+      "default": null
+    },
     "owner": {
       "description": "Owner of this pipeline service.",
       "$ref": "../../type/entityReference.json"

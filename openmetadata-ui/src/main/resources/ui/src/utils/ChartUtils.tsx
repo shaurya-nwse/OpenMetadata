@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,21 +11,24 @@
  *  limitations under the License.
  */
 
+import { isString, toString } from 'lodash';
 import React from 'react';
 import { LegendProps } from 'recharts';
-import { formatNumberWithComma } from './CommonUtils';
+import { getStatisticsDisplayValue } from './CommonUtils';
 
 export const tooltipFormatter = (
   value: string | number,
   tickFormatter?: string
 ) => {
-  const numValue = Number(value);
+  if (isString(value)) {
+    return value;
+  }
 
   return (
     <>
       {tickFormatter
-        ? `${numValue.toFixed(2)}${tickFormatter}`
-        : formatNumberWithComma(numValue)}
+        ? `${value.toFixed(2)}${tickFormatter}`
+        : getStatisticsDisplayValue(value)}
     </>
   );
 };
@@ -38,7 +41,7 @@ export const renderColorfulLegendText: LegendProps['formatter'] = (
 export const axisTickFormatter = (value: number, tickFormatter?: string) => {
   return tickFormatter
     ? `${value}${tickFormatter}`
-    : formatNumberWithComma(value);
+    : toString(getStatisticsDisplayValue(value));
 };
 
 export const updateActiveChartFilter = (

@@ -16,7 +16,7 @@ from metadata.generated.schema.metadataIngestion.workflow import (
     OpenMetadataWorkflowConfig,
 )
 from metadata.generated.schema.type.entityReference import EntityReference
-from metadata.ingestion.source.database.postgres import (
+from metadata.ingestion.source.database.postgres.metadata import (
     GEOMETRY,
     POINT,
     POLYGON,
@@ -209,7 +209,9 @@ EXPECTED_COLUMN_VALUE = [
 
 
 class PostgresUnitTest(TestCase):
-    @patch("metadata.ingestion.source.database.common_db_source.test_connection")
+    @patch(
+        "metadata.ingestion.source.database.common_db_source.CommonDbSourceService.test_connection"
+    )
     def __init__(self, methodName, test_connection) -> None:
         super().__init__(methodName)
         test_connection.return_value = False
@@ -233,7 +235,7 @@ class PostgresUnitTest(TestCase):
         inspector.get_pk_constraint = lambda table_name, schema_name: []
         inspector.get_unique_constraints = lambda table_name, schema_name: []
         inspector.get_foreign_keys = lambda table_name, schema_name: []
-        result, _ = self.postgres_source.get_columns_and_constraints(
+        result, _, _ = self.postgres_source.get_columns_and_constraints(
             "public", "user", "postgres", inspector
         )
         for i in range(len(EXPECTED_COLUMN_VALUE)):

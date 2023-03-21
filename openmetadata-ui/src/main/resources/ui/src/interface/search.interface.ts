@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,14 +11,15 @@
  *  limitations under the License.
  */
 
+import { Container } from 'generated/entity/data/container';
 import { SearchIndex } from '../enums/search.enum';
+import { Tag } from '../generated/entity/classification/tag';
 import { Dashboard } from '../generated/entity/data/dashboard';
 import { GlossaryTerm } from '../generated/entity/data/glossaryTerm';
 import { Mlmodel } from '../generated/entity/data/mlmodel';
 import { Pipeline } from '../generated/entity/data/pipeline';
 import { Table } from '../generated/entity/data/table';
 import { Topic } from '../generated/entity/data/topic';
-import { TagClass } from '../generated/entity/tags/tagCategory';
 import { Team } from '../generated/entity/teams/team';
 import { User } from '../generated/entity/teams/user';
 import { TagLabel } from '../generated/type/tagLabel';
@@ -67,8 +68,10 @@ export interface UserSearchSource extends SearchSourceBase, User {} // extends E
 
 export interface TeamSearchSource extends SearchSourceBase, Team {} // extends EntityInterface
 
-export interface TagClassSearchSource extends SearchSourceBase, TagClass {
-  id: string; // TagClass is generated with the `id` field as optional, which is should not
+export interface ContainerSearchSource extends SearchSourceBase, Container {} // extends EntityInterface
+
+export interface TagClassSearchSource extends SearchSourceBase, Tag {
+  id: string; // Tag is generated with the `id` field as optional, which is should not
 } // extends EntityInterface
 
 export interface GlossarySearchSource extends SearchSourceBase, GlossaryTerm {} // extends EntityInterface
@@ -78,7 +81,8 @@ export type ExploreSearchSource =
   | DashboardSearchSource
   | MlmodelSearchSource
   | TopicSearchSource
-  | PipelineSearchSource;
+  | PipelineSearchSource
+  | ContainerSearchSource;
 
 export type SearchIndexSearchSourceMapping = {
   [SearchIndex.TABLE]: TableSearchSource;
@@ -90,6 +94,7 @@ export type SearchIndexSearchSourceMapping = {
   [SearchIndex.USER]: UserSearchSource;
   [SearchIndex.TOPIC]: TopicSearchSource;
   [SearchIndex.TAG]: TagClassSearchSource;
+  [SearchIndex.CONTAINER]: ContainerSearchSource;
 };
 
 export type SearchRequest<

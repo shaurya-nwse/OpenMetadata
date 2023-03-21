@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,7 +11,9 @@
  *  limitations under the License.
  */
 
-import { isUndefined } from 'lodash';
+import classNames from 'classnames';
+import { ELASTICSEARCH_ERROR_PLACEHOLDER_TYPE } from 'enums/common.enum';
+import { isUndefined, toString } from 'lodash';
 import PropTypes from 'prop-types';
 import React from 'react';
 import { PAGE_SIZE } from '../../constants/constants';
@@ -43,7 +45,9 @@ const SearchedData: React.FC<SearchedDataProps> = ({
   showOnlyChildren = false,
   totalValue,
   isFilterSelected,
+  isSummaryPanelVisible,
   searchText,
+  selectedEntityId,
   handleSummaryPanelDisplay,
 }) => {
   const highlightSearchResult = () => {
@@ -61,7 +65,7 @@ const SearchedData: React.FC<SearchedDataProps> = ({
         });
       }
 
-      let name = table.name;
+      let name = toString(table.displayName);
       if (!isUndefined(highlight)) {
         name = highlight?.name?.join(' ') || name;
       }
@@ -90,6 +94,11 @@ const SearchedData: React.FC<SearchedDataProps> = ({
       return (
         <div className="tw-mb-3" key={index}>
           <TableDataCardV2
+            className={classNames(
+              table.id === selectedEntityId && isSummaryPanelVisible
+                ? 'highlight-card'
+                : ''
+            )}
             handleSummaryPanelDisplay={handleSummaryPanelDisplay}
             id={`tabledatacard${index}`}
             matches={matches}
@@ -150,7 +159,10 @@ const SearchedData: React.FC<SearchedDataProps> = ({
           ) : (
             <>
               {children}
-              <ErrorPlaceHolderES query={searchText} type="noData" />
+              <ErrorPlaceHolderES
+                query={searchText}
+                type={ELASTICSEARCH_ERROR_PLACEHOLDER_TYPE.NO_DATA}
+              />
             </>
           )}
         </div>

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,21 +11,30 @@
  *  limitations under the License.
  */
 
-import { faCaretDown, faCaretRight } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { Typography } from 'antd';
+import Icon from '@ant-design/icons';
+import { Tooltip } from 'antd';
 import { ExpandableConfig } from 'antd/lib/table/interface';
 import classNames from 'classnames';
 import { t } from 'i18next';
-import { isEmpty, upperCase } from 'lodash';
+import { upperCase } from 'lodash';
 import { EntityTags } from 'Models';
 import React from 'react';
 import { ReactComponent as DashboardIcon } from '../assets/svg/dashboard-grey.svg';
+import { ReactComponent as DragIcon } from '../assets/svg/drag.svg';
+import { ReactComponent as DropDownIcon } from '../assets/svg/DropDown.svg';
+import { ReactComponent as IconFailBadge } from '../assets/svg/fail-badge.svg';
+import { ReactComponent as IconForeignKey } from '../assets/svg/foriegnKey.svg';
+import { ReactComponent as RightArrowIcon } from '../assets/svg/ic-right-arrow.svg';
+import { ReactComponent as IconKey } from '../assets/svg/icon-key.svg';
+import { ReactComponent as IconNotNull } from '../assets/svg/icon-notnull.svg';
+import { ReactComponent as IconUnique } from '../assets/svg/icon-unique.svg';
+import { ReactComponent as IconPendingBadge } from '../assets/svg/pending-badge.svg';
+import { ReactComponent as IconSuccessBadge } from '../assets/svg/success-badge.svg';
+
 import { ReactComponent as MlModelIcon } from '../assets/svg/mlmodal.svg';
 import { ReactComponent as PipelineIcon } from '../assets/svg/pipeline-grey.svg';
 import { ReactComponent as TableIcon } from '../assets/svg/table-grey.svg';
 import { ReactComponent as TopicIcon } from '../assets/svg/topic-grey.svg';
-import PopOver from '../components/common/popover/PopOver';
 import { FQN_SEPARATOR_CHAR } from '../constants/char.constants';
 import {
   getDashboardDetailsPath,
@@ -42,7 +51,11 @@ import { GlobalSettingsMenuCategory } from '../constants/GlobalSettings.constant
 import { EntityType, FqnPart } from '../enums/entity.enum';
 import { SearchIndex } from '../enums/search.enum';
 import { ConstraintTypes, PrimaryTableDataTypes } from '../enums/table.enum';
-import { Column, DataType } from '../generated/entity/data/table';
+import {
+  Column,
+  DataType,
+  TableConstraint,
+} from '../generated/entity/data/table';
 import { TestCaseStatus } from '../generated/tests/testCase';
 import { TagLabel } from '../generated/type/tagLabel';
 import {
@@ -50,9 +63,9 @@ import {
   getTableFQNFromColumnFQN,
   sortTagsCaseInsensitive,
 } from './CommonUtils';
+import { getContainerDetailPath } from './ContainerDetailUtils';
 import { getGlossaryPath, getSettingPath } from './RouterUtils';
 import { ordinalize } from './StringsUtils';
-import SVGIcons, { Icons } from './SvgUtils';
 
 export const getBadgeName = (tableType?: string) => {
   switch (tableType) {
@@ -78,7 +91,7 @@ export const getUsagePercentile = (pctRank: number, isLiteral = false) => {
   const ordinalPercentile = ordinalize(percentile);
   const usagePercentile = `${
     isLiteral ? t('label.usage') : ''
-  } - ${ordinalPercentile} ${t('label.pctile-lowercase')}`;
+  } ${ordinalPercentile} ${t('label.pctile-lowercase')}`;
 
   return usagePercentile;
 };
@@ -135,34 +148,38 @@ export const getSearchTableTagsWithoutTier = (
   );
 };
 
-export const getConstraintIcon = (constraint = '', className = '') => {
-  let title: string, icon: string;
+export const getConstraintIcon = (
+  constraint = '',
+  className = '',
+  width = '16px'
+) => {
+  let title: string, icon: SvgComponent;
   switch (constraint) {
     case ConstraintTypes.PRIMARY_KEY:
       {
         title = t('label.primary-key');
-        icon = Icons.KEY;
+        icon = IconKey;
       }
 
       break;
     case ConstraintTypes.UNIQUE:
       {
         title = t('label.unique');
-        icon = Icons.UNIQUE;
+        icon = IconUnique;
       }
 
       break;
     case ConstraintTypes.NOT_NULL:
       {
         title = t('label.not-null');
-        icon = Icons.NOT_NULL;
+        icon = IconNotNull;
       }
 
       break;
     case ConstraintTypes.FOREIGN_KEY:
       {
         title = t('label.foreign-key');
-        icon = Icons.FOREGIN_KEY;
+        icon = IconForeignKey;
       }
 
       break;
@@ -171,14 +188,13 @@ export const getConstraintIcon = (constraint = '', className = '') => {
   }
 
   return (
-    <PopOver
+    <Tooltip
       className={classNames(className)}
-      position="bottom"
-      size="small"
+      placement="bottom"
       title={title}
-      trigger="mouseenter">
-      <SVGIcons alt={title} icon={icon} width="16px" />
-    </PopOver>
+      trigger="hover">
+      <Icon alt={title} component={icon} style={{ fontSize: width }} />
+    </Tooltip>
   );
 };
 
@@ -229,6 +245,10 @@ export const getEntityLink = (
     case EntityType.MLMODEL:
     case SearchIndex.MLMODEL:
       return getMlModelPath(fullyQualifiedName);
+
+    case EntityType.CONTAINER:
+    case SearchIndex.CONTAINER:
+      return getContainerDetailPath(fullyQualifiedName);
 
     case SearchIndex.TABLE:
     case EntityType.TABLE:
@@ -348,35 +368,77 @@ export const getEntityFqnFromEntityLink = (
 export const getTestResultBadgeIcon = (status?: TestCaseStatus) => {
   switch (status) {
     case TestCaseStatus.Success:
-      return Icons.SUCCESS_BADGE;
+      return IconSuccessBadge;
 
     case TestCaseStatus.Failed:
-      return Icons.FAIL_BADGE;
+      return IconFailBadge;
 
     case TestCaseStatus.Aborted:
-      return Icons.PENDING_BADGE;
+      return IconPendingBadge;
 
     default:
-      return '';
+      return IconPendingBadge;
   }
 };
 
-export function getTableExpandableConfig<
-  T extends { children?: T[] }
->(): ExpandableConfig<T> {
+export function getTableExpandableConfig<T>(
+  isDraggable?: boolean
+): ExpandableConfig<T> {
   const expandableConfig: ExpandableConfig<T> = {
-    rowExpandable: (record: T) => !isEmpty(record.children),
-
     expandIcon: ({ expanded, onExpand, expandable, record }) =>
-      expandable && (
-        <Typography.Text
-          className="m-r-xs cursor-pointer"
-          data-testid="expand-icon"
-          onClick={(e) => onExpand(record, e)}>
-          <FontAwesomeIcon icon={expanded ? faCaretDown : faCaretRight} />
-        </Typography.Text>
+      expandable ? (
+        <>
+          {isDraggable && <Icon className="drag-icon" component={DragIcon} />}
+          <Icon
+            className="mr-1"
+            component={expanded ? DropDownIcon : RightArrowIcon}
+            data-testid="expand-icon"
+            size={16}
+            onClick={(e) => onExpand(record, e)}
+          />
+        </>
+      ) : (
+        isDraggable && (
+          <>
+            <Icon className="drag-icon" component={DragIcon} />
+            <div className="expand-cell-empty-icon-container" />
+          </>
+        )
       ),
   };
 
   return expandableConfig;
 }
+
+export const prepareConstraintIcon = (
+  columnName: string,
+  columnConstraint?: string,
+  tableConstraints?: TableConstraint[],
+  iconClassName?: string,
+  iconWidth?: string
+) => {
+  // get the table constraint for column
+  const tableConstraint = tableConstraints?.find((constraint) =>
+    constraint.columns?.includes(columnName)
+  );
+
+  // prepare column constraint element
+  const columnConstraintEl = columnConstraint
+    ? getConstraintIcon(columnConstraint, iconClassName || 'tw-mr-2', iconWidth)
+    : null;
+
+  // prepare table constraint element
+  const tableConstraintEl = tableConstraint
+    ? getConstraintIcon(
+        tableConstraint.constraintType,
+        iconClassName || 'tw-mr-2',
+        iconWidth
+      )
+    : null;
+
+  return (
+    <span data-testid="constraints">
+      {columnConstraintEl} {tableConstraintEl}
+    </span>
+  );
+};

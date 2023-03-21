@@ -27,10 +27,7 @@ from metadata.generated.schema.api.lineage.addLineage import AddLineageRequest
 from metadata.generated.schema.api.services.createStorageService import (
     CreateStorageServiceRequest,
 )
-from metadata.generated.schema.api.tags.createTag import CreateTagRequest
-from metadata.generated.schema.api.tags.createTagCategory import (
-    CreateTagCategoryRequest,
-)
+from metadata.generated.schema.entity.classification.tag import Tag
 from metadata.generated.schema.entity.data.database import Database
 from metadata.generated.schema.entity.data.databaseSchema import DatabaseSchema
 from metadata.generated.schema.entity.data.location import Location
@@ -45,7 +42,6 @@ from metadata.generated.schema.entity.services.databaseService import (
     DatabaseService,
 )
 from metadata.generated.schema.entity.services.storageService import StorageService
-from metadata.generated.schema.entity.tags.tagCategory import Tag
 from metadata.generated.schema.metadataIngestion.databaseServiceMetadataPipeline import (
     DatabaseServiceMetadataPipeline,
 )
@@ -62,8 +58,8 @@ from metadata.generated.schema.type.tagLabel import (
 )
 from metadata.ingestion.api.source import Source, SourceStatus
 from metadata.ingestion.api.topology_runner import TopologyRunnerMixin
-from metadata.ingestion.models.ometa_tag_category import OMetaTagAndCategory
-from metadata.ingestion.models.table_metadata import DeleteTable
+from metadata.ingestion.models.ometa_classification import OMetaTagAndClassification
+from metadata.ingestion.models.table_metadata import DeleteTable, OMetaTableConstraints
 from metadata.ingestion.models.topology import (
     NodeStage,
     ServiceTopology,
@@ -71,9 +67,7 @@ from metadata.ingestion.models.topology import (
     create_source_context,
 )
 from metadata.ingestion.ometa.ometa_api import OpenMetadata
-from metadata.ingestion.source.database.dbt_source import DBTMixin
 from metadata.utils import fqn
-from metadata.utils.dbt_config import get_dbt_details
 from metadata.utils.filters import filter_by_schema
 from metadata.utils.logger import ingestion_logger
 
@@ -85,7 +79,7 @@ class DataModelLink(BaseModel):
     Tmp model to handle data model ingestion
     """
 
-    fqn: FullyQualifiedEntityName
+    table_entity: Table
     datamodel: DataModel
 
 
@@ -125,12 +119,7 @@ class DatabaseServiceTopology(ServiceTopology):
             ),
         ],
         children=["database"],
-        post_process=[
-            "process_dbt_lineage_and_descriptions",
-            "create_dbt_tests_suite_definition",
-            "create_dbt_test_cases",
-            "yield_view_lineage",
-        ],
+        post_process=["yield_view_lineage", "yield_table_constraints"],
     )
     database = TopologyNode(
         producer="get_database_names",
@@ -149,18 +138,18 @@ class DatabaseServiceTopology(ServiceTopology):
         producer="get_database_schema_names",
         stages=[
             NodeStage(
-                type_=DatabaseSchema,
-                context="database_schema",
-                processor="yield_database_schema",
-                consumer=["database_service", "database"],
-            ),
-            NodeStage(
-                type_=OMetaTagAndCategory,
+                type_=OMetaTagAndClassification,
                 context="tags",
                 processor="yield_tag_details",
                 ack_sink=False,
                 nullable=True,
                 cache_all=True,
+            ),
+            NodeStage(
+                type_=DatabaseSchema,
+                context="database_schema",
+                processor="yield_database_schema",
+                consumer=["database_service", "database"],
             ),
         ],
         children=["table"],
@@ -180,11 +169,6 @@ class DatabaseServiceTopology(ServiceTopology):
                 processor="yield_location",
                 consumer=["storage_service"],
                 nullable=True,
-            ),
-            NodeStage(
-                type_=DataModelLink,
-                processor="yield_datamodel",
-                ack_sink=False,
             ),
             NodeStage(
                 type_=TableLocationLink,
@@ -216,7 +200,7 @@ class SQLSourceStatus(SourceStatus):
 
 
 class DatabaseServiceSource(
-    DBTMixin, TopologyRunnerMixin, Source, ABC
+    TopologyRunnerMixin, Source, ABC
 ):  # pylint: disable=too-many-public-methods
     """
     Base class for Database Services.
@@ -237,31 +221,8 @@ class DatabaseServiceSource(
     topology = DatabaseServiceTopology()
     context = create_source_context(topology)
 
-    # Initialize DBT structures for all Databases
-    data_models = {}
-    dbt_tests = {}
-
-    def __init__(self):
-
-        if (
-            hasattr(self.source_config.dbtConfigSource, "dbtSecurityConfig")
-            and self.source_config.dbtConfigSource.dbtSecurityConfig is None
-        ):
-            logger.info("dbtConfigSource is not configured")
-            self.dbt_catalog = None
-            self.dbt_manifest = None
-            self.dbt_run_results = None
-            self.data_models = {}
-        else:
-            dbt_details = get_dbt_details(self.source_config.dbtConfigSource)
-            if dbt_details:
-                self.dbt_catalog = dbt_details[0] if len(dbt_details) == 3 else None
-                self.dbt_manifest = dbt_details[1] if len(dbt_details) == 3 else None
-                self.dbt_run_results = dbt_details[2] if len(dbt_details) == 3 else None
-                self.data_models = {}
-
     def prepare(self):
-        self._parse_data_model()
+        pass
 
     def get_status(self) -> SourceStatus:
         return self.status
@@ -325,12 +286,14 @@ class DatabaseServiceSource(
         """
 
     @abstractmethod
-    def yield_tag(self, schema_name: str) -> Iterable[OMetaTagAndCategory]:
+    def yield_tag(self, schema_name: str) -> Iterable[OMetaTagAndClassification]:
         """
         From topology. To be run for each schema
         """
 
-    def yield_tag_details(self, schema_name: str) -> Iterable[OMetaTagAndCategory]:
+    def yield_tag_details(
+        self, schema_name: str
+    ) -> Iterable[OMetaTagAndClassification]:
         """
         From topology. To be run for each schema
         """
@@ -342,6 +305,14 @@ class DatabaseServiceSource(
         """
         From topology.
         Parses view definition to get lineage information
+        """
+
+    def yield_table_constraints(self) -> Optional[Iterable[OMetaTableConstraints]]:
+        """
+        From topology.
+        process the table constraints of all tables
+        by default no need to process table constraints
+        specially for non SQA sources
         """
 
     @abstractmethod
@@ -362,8 +333,6 @@ class DatabaseServiceSource(
         """
         From topology.
         Prepare a location request and pass it to the sink.
-
-        Also, update the self.inspector value to the current db.
         """
         return
 
@@ -372,52 +341,6 @@ class DatabaseServiceSource(
         fetch all schema names without any filtering.
         """
         yield from self.get_database_schema_names()
-
-    def yield_datamodel(
-        self, table_name_and_type: Tuple[str, TableType]
-    ) -> Iterable[DataModelLink]:
-        """
-        Gets the current table being processed, fetches its data model
-        and sends it ot the sink
-        """
-
-        table_name, _ = table_name_and_type
-        table_fqn = fqn.build(
-            self.metadata,
-            entity_type=Table,
-            service_name=self.context.database_service.name.__root__,
-            database_name=self.context.database.name.__root__,
-            schema_name=self.context.database_schema.name.__root__,
-            table_name=table_name,
-        )
-
-        datamodel = self.get_data_model(table_fqn)
-
-        dbt_tag_labels = None
-        if datamodel:
-            logger.info("Processing DBT Tags")
-            dbt_tag_labels = datamodel.tags
-            if not dbt_tag_labels:
-                dbt_tag_labels = []
-            for column in datamodel.columns:
-                if column.tags:
-                    dbt_tag_labels.extend(column.tags)
-            if dbt_tag_labels:
-                for tag_label in dbt_tag_labels:
-                    yield OMetaTagAndCategory(
-                        category_name=CreateTagCategoryRequest(
-                            name="DBTTags",
-                            description="",
-                        ),
-                        category_details=CreateTagRequest(
-                            name=tag_label.tagFQN.__root__.split(".")[1],
-                            description="DBT Tags",
-                        ),
-                    )
-            yield DataModelLink(
-                fqn=table_fqn,
-                datamodel=datamodel,
-            )
 
     def yield_table_location_link(
         self,
@@ -439,12 +362,12 @@ class DatabaseServiceSource(
                 tagFQN=fqn.build(
                     self.metadata,
                     entity_type=Tag,
-                    tag_category_name=tag_and_category.category_name.name.__root__,
-                    tag_name=tag_and_category.category_details.name.__root__,
+                    classification_name=tag_and_category.classification_request.name.__root__,
+                    tag_name=tag_and_category.tag_request.name.__root__,
                 ),
                 labelType=LabelType.Automated,
                 state=State.Suggested,
-                source=TagSource.Tag,
+                source=TagSource.Classification,
             )
             for tag_and_category in self.context.tags or []
             if tag_and_category.fqn.__root__ == entity_fqn
@@ -462,6 +385,7 @@ class DatabaseServiceSource(
             database_name=self.context.database.name.__root__,
             schema_name=self.context.database_schema.name.__root__,
             table_name=table_name,
+            skip_es_search=True,
         )
         return self.get_tag_by_fqn(entity_fqn=table_fqn)
 
@@ -494,6 +418,7 @@ class DatabaseServiceSource(
             database_name=self.context.database.name.__root__,
             schema_name=self.context.database_schema.name.__root__,
             table_name=table_request.name.__root__,
+            skip_es_search=True,
         )
 
         self.database_source_state.add(table_fqn)
@@ -508,7 +433,10 @@ class DatabaseServiceSource(
         )
         for table in database_state:
             if str(table.fullyQualifiedName.__root__) not in self.database_source_state:
-                yield DeleteTable(table=table)
+                yield DeleteTable(
+                    table=table,
+                    mark_deleted_tables=self.source_config.markDeletedTables,
+                )
 
     def fetch_all_schema_and_delete_tables(self):
         """

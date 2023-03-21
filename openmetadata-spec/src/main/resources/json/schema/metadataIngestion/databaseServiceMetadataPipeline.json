@@ -19,7 +19,7 @@
       "default": "DatabaseMetadata"
     },
     "markDeletedTables": {
-      "description": "Optional configuration to soft delete tables in OpenMetadata if the source tables are deleted.",
+      "description": "Optional configuration to soft delete tables in OpenMetadata if the source tables are deleted. Also, if the table is deleted, all the associated entities like testSuite, lineage, etc., with that table will be deleted",
       "type": "boolean",
       "default": true
     },
@@ -59,28 +59,6 @@
     "databaseFilterPattern": {
       "description": "Regex to only fetch databases that matches the pattern.",
       "$ref": "../type/filterPattern.json#/definitions/filterPattern"
-    },
-    "dbtConfigSource": {
-      "mask": true,
-      "title": "DBT Configuration Source",
-      "description": "Available sources to fetch DBT catalog and manifest files.",
-      "oneOf": [
-        {
-          "$ref": "./dbtconfig/dbtCloudConfig.json"
-        },
-        {
-          "$ref": "./dbtconfig/dbtLocalConfig.json"
-        },
-        {
-          "$ref": "./dbtconfig/dbtHttpConfig.json"
-        },
-        {
-          "$ref": "./dbtconfig/dbtS3Config.json"
-        },
-        {
-          "$ref": "./dbtconfig/dbtGCSConfig.json"
-        }
-      ]
     }
   },
   "additionalProperties": false

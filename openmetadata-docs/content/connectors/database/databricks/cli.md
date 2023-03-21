@@ -4,15 +4,31 @@ slug: /connectors/database/databricks/cli
 ---
 
 # Run Databricks using the metadata CLI
+<Table>
+
+| Stage | Metadata |Query Usage | Data Profiler | Data Quality | Lineage | DBT | Supported Versions |
+|:------:|:------:|:-----------:|:-------------:|:------------:|:-------:|:---:|:------------------:|
+|  PROD  |   ✅   |      ✅      |       ✅       |       ✅      |    ✅    |  ✅  |  --  |
+
+</Table>
+
+<Table>
+
+| Lineage | Table-level | Column-level |
+|:------:|:-----------:|:-------------:|
+| ✅ | ✅ | ✅ |
+
+</Table>
 
 In this section, we provide guides and references to use the Databricks connector.
 
 Configure and schedule Databricks metadata and profiler workflows from the OpenMetadata UI:
 - [Requirements](#requirements)
 - [Metadata Ingestion](#metadata-ingestion)
-- [Query Usage and Lineage Ingestion](#query-usage-and-lineage-ingestion)
+- [Query Usage](#query-usage)
 - [Data Profiler](#data-profiler)
-- [DBT Integration](#dbt-integration)
+- [Lineage](#lineage)
+- [dbt Integration](#dbt-integration)
 
 ## Requirements
 
@@ -54,12 +70,16 @@ source:
   serviceName: local_databricks
   serviceConnection:
     config:
+      catalog: hive_metastore
+      databaseSchema: default
       type: Databricks
       token: <databricks token>
       hostPort: <databricks connection host & port>
       httpPath: <http path of databricks cluster>
+      connectionTimeout: 120
   sourceConfig:
     config:
+      type: DatabaseMetadata
       markDeletedTables: true
       includeTables: true
       includeViews: true
@@ -85,43 +105,6 @@ source:
       #   excludes:
       #     - table3
       #     - table4
-      # For DBT, choose one of Cloud, Local, HTTP, S3 or GCS configurations
-      # dbtConfigSource:
-      # # For cloud
-      #   dbtCloudAuthToken: token
-      #   dbtCloudAccountId: ID
-      # # For Local
-      #   dbtCatalogFilePath: path-to-catalog.json
-      #   dbtManifestFilePath: path-to-manifest.json
-      # # For HTTP
-      #   dbtCatalogHttpPath: http://path-to-catalog.json
-      #   dbtManifestHttpPath: http://path-to-manifest.json
-      # # For S3
-      #   dbtSecurityConfig:  # These are modeled after all AWS credentials
-      #     awsAccessKeyId: KEY
-      #     awsSecretAccessKey: SECRET
-      #     awsRegion: us-east-2
-      #   dbtPrefixConfig:
-      #     dbtBucketName: bucket
-      #     dbtObjectPrefix: "dbt/"
-      # # For GCS
-      #   dbtSecurityConfig:  # These are modeled after all GCS credentials
-      #     type: My Type
-      #     projectId: project ID
-      #     privateKeyId: us-east-2
-      #     privateKey: |
-      #      -----BEGIN PRIVATE KEY-----
-      #      Super secret key
-      #      -----END PRIVATE KEY-----
-      #     clientEmail: client@mail.com
-      #     clientId: 1234
-      #     authUri: https://accounts.google.com/o/oauth2/auth (default)
-      #     tokenUri: https://oauth2.googleapis.com/token (default)
-      #     authProviderX509CertUrl: https://www.googleapis.com/oauth2/v1/certs (default)
-      #     clientX509CertUrl: https://cert.url (URI)
-      #   dbtPrefixConfig:
-      #     dbtBucketName: bucket
-      #     dbtObjectPrefix: "dbt/"
 sink:
   type: metadata-rest
   config: {}
@@ -138,6 +121,9 @@ workflowConfig:
 - **hostPort**: Enter the fully qualified hostname and port number for your Databricks deployment in the Host and Port field.
 - **token**: Generated Token to connect to Databricks.
 - **httpPath**: Databricks compute resources URL.
+- **connectionTimeout**: The maximum amount of time (in seconds) to wait for a successful connection to the data source. If the connection attempt takes longer than this timeout period, an error will be returned.
+- **catalog**: Catalog of the data source(Example: hive_metastore). This is optional parameter, if you would like to restrict the metadata reading to a single catalog. When left blank, OpenMetadata Ingestion attempts to scan all the catalog.
+- **databaseSchema**: DatabaseSchema of the data source. This is optional parameter, if you would like to restrict the metadata reading to a single databaseSchema. When left blank, OpenMetadata Ingestion attempts to scan all the databaseSchema.
 - **Connection Options (Optional)**: Enter the details for any additional connection options that can be sent to Databricks during the connection. These details must be added as Key-Value pairs.
 - **Connection Arguments (Optional)**: Enter the details for any additional connection arguments such as security or protocol configs that can be sent to Databricks during the connection. These details must be added as Key-Value pairs. 
   - In case you are using Single-Sign-On (SSO) for authentication, add the `authenticator` details in the Connection Arguments as a Key-Value pair as follows: `"authenticator" : "sso_login_url"`
@@ -320,9 +306,9 @@ metadata ingest -c <path-to-yaml>
 Note that from connector to connector, this recipe will always be the same. By updating the YAML configuration,
 you will be able to extract metadata from different sources.
 
-## Query Usage and Lineage Ingestion
+## Query Usage
 
-To ingest the Query Usage and Lineage information, the `serviceConnection` configuration will remain the same. 
+To ingest the Query Usage, the `serviceConnection` configuration will remain the same. 
 However, the `sourceConfig` is now modeled after this JSON Schema.
 
 Note: To get Query Usage and Lineage details, need a Azure Databricks Premium account.
@@ -337,6 +323,8 @@ source:
   serviceName: local_databricks
   serviceConnection:
     config:
+      catalog: hive_metastore
+      databaseSchema: default
       token: <databricks token>
       hostPort: localhost:443
       connectionArguments:
@@ -421,6 +409,8 @@ source:
   serviceName: local_databricks
   serviceConnection:
     config:
+      catalog: hive_metastore
+      databaseSchema: default
       type: Databricks
       token: <databricks token>
       hostPort: <databricks connection host & port>
@@ -540,6 +530,10 @@ metadata profile -c <path-to-yaml>
 
 Note how instead of running `ingest`, we are using the `profile` command to select the Profiler workflow.
 
-## DBT Integration
+## Lineage
 
-You can learn more about how to ingest DBT models' definitions and their lineage [here](https://docs.open-metadata.org/openmetadata/ingestion/workflows/metadata/dbt).
+You can learn more about how to ingest lineage [here](/connectors/ingestion/workflows/lineage).
+
+## dbt Integration
+
+You can learn more about how to ingest dbt models' definitions and their lineage [here](/connectors/ingestion/workflows/dbt).

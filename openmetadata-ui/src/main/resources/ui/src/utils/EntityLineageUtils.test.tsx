@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,18 +11,27 @@
  *  limitations under the License.
  */
 
-import { Edge } from 'reactflow';
 import {
   CustomEdgeData,
   EdgeTypeEnum,
   SelectedEdge,
-} from '../components/EntityLineage/EntityLineage.interface';
+} from 'components/EntityLineage/EntityLineage.interface';
+import {
+  getDashboardDetailsPath,
+  getMlModelPath,
+  getPipelineDetailsPath,
+  getTableTabPath,
+  getTopicDetailsPath,
+} from 'constants/constants';
+import { EntityType } from 'enums/entity.enum';
+import { Edge } from 'reactflow';
 import { LineageDetails } from '../generated/api/lineage/addLineage';
 import { EntityLineage } from '../generated/type/entityLineage';
 import { EntityReference } from '../generated/type/entityReference';
 import {
   COLUMN_LINEAGE_DETAILS,
   EDGE_TO_BE_REMOVED,
+  MOCK_CHILD_MAP,
   MOCK_COLUMN_LINEAGE_EDGE,
   MOCK_LINEAGE_DATA,
   MOCK_NODES_AND_EDGES,
@@ -44,8 +53,12 @@ import {
   getAllTracedColumnEdge,
   getAllTracedEdges,
   getAllTracedNodes,
+  getChildMap,
   getClassifiedEdge,
+  getEdgeStyle,
   getEdgeType,
+  getEntityLineagePath,
+  getParamByEntityType,
   getRemovedNodeData,
   getUpdatedEdge,
   getUpdatedEdgeWithPipeline,
@@ -67,7 +80,7 @@ describe('Test EntityLineageUtils utility', () => {
     );
 
     expect(upstreamData).toStrictEqual(UP_STREAM_EDGE);
-    expect(nodata).toStrictEqual(undefined);
+    expect(nodata).toBeUndefined();
   });
 
   it('getUpStreamDownStreamColumnLineageArr function should work properly', () => {
@@ -298,5 +311,63 @@ describe('Test EntityLineageUtils utility', () => {
     });
     expect(isColumnTracedTruthy).toBeTruthy();
     expect(isColumnTracedFalsy).toBeFalsy();
+  });
+
+  it('returns the correct parameter for dataset and table entity types - getParamByEntityType', () => {
+    expect(getParamByEntityType(EntityType.DATASET)).toEqual('datasetFQN');
+    expect(getParamByEntityType(EntityType.TABLE)).toEqual('datasetFQN');
+  });
+
+  it('returns the correct parameter for other entity types - getParamByEntityType', () => {
+    expect(getParamByEntityType(EntityType.TOPIC)).toEqual('topicFQN');
+    expect(getParamByEntityType(EntityType.PIPELINE)).toEqual('pipelineFQN');
+    expect(getParamByEntityType(EntityType.MLMODEL)).toEqual('mlModelFqn');
+    expect(getParamByEntityType(EntityType.DASHBOARD)).toEqual('dashboardFQN');
+    expect(getParamByEntityType(EntityType.DATABASE)).toEqual('databaseFQN');
+    expect(getParamByEntityType(EntityType.DATABASE_SCHEMA)).toEqual(
+      'databaseSchemaFQN'
+    );
+    expect(getParamByEntityType(EntityType.ALERT)).toEqual('entityFQN');
+  });
+
+  it('should return the correct lineage path for the given entity type and FQN', () => {
+    expect(getEntityLineagePath(EntityType.TABLE, 'myTable')).toEqual(
+      getTableTabPath('myTable', 'lineage')
+    );
+    expect(getEntityLineagePath(EntityType.TOPIC, 'myTopic')).toEqual(
+      getTopicDetailsPath('myTopic', 'lineage')
+    );
+    expect(getEntityLineagePath(EntityType.DASHBOARD, 'myDashboard')).toEqual(
+      getDashboardDetailsPath('myDashboard', 'lineage')
+    );
+    expect(getEntityLineagePath(EntityType.PIPELINE, 'myPipeline')).toEqual(
+      getPipelineDetailsPath('myPipeline', 'lineage')
+    );
+    expect(getEntityLineagePath(EntityType.MLMODEL, 'myModel')).toEqual(
+      getMlModelPath('myModel', 'lineage')
+    );
+    expect(getEntityLineagePath(EntityType.DATASET, 'myDataset')).toEqual('');
+  });
+
+  it('getChildMap should return valid map object', () => {
+    expect(getChildMap(MOCK_LINEAGE_DATA)).toEqual(MOCK_CHILD_MAP);
+  });
+
+  it('getEdgeStyle should returns the expected edge style for a value', () => {
+    const expectedStyle = {
+      opacity: 1,
+      strokeWidth: 2,
+      stroke: '#B02AAC',
+    };
+
+    expect(getEdgeStyle(true)).toEqual(expectedStyle);
+
+    const expectedFalseStyle = {
+      opacity: 0.25,
+      strokeWidth: 1,
+      stroke: undefined,
+    };
+
+    expect(getEdgeStyle(false)).toEqual(expectedFalseStyle);
   });
 });

@@ -15,7 +15,6 @@ package org.openmetadata.client.gateway;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import feign.Feign;
-import feign.RequestInterceptor;
 import feign.form.FormEncoder;
 import feign.jackson.JacksonDecoder;
 import feign.jackson.JacksonEncoder;
@@ -23,7 +22,7 @@ import feign.okhttp.OkHttpClient;
 import feign.slf4j.Slf4jLogger;
 import lombok.extern.slf4j.Slf4j;
 import org.openmetadata.client.ApiClient;
-import org.openmetadata.client.api.CatalogApi;
+import org.openmetadata.client.api.SystemApi;
 import org.openmetadata.client.interceptors.CustomRequestInterceptor;
 import org.openmetadata.client.security.factory.AuthenticationProviderFactory;
 import org.openmetadata.schema.api.OpenMetadataServerVersion;
@@ -77,19 +76,10 @@ public class OpenMetadata {
   }
 
   public <K> void updateRequestType(Class<K> requestClass) {
-    if (apiClient.getApiAuthorizations().containsKey(REQUEST_INTERCEPTOR_KEY)) {
-      apiClient.getApiAuthorizations().remove(REQUEST_INTERCEPTOR_KEY);
-    }
+    apiClient.getApiAuthorizations().remove(REQUEST_INTERCEPTOR_KEY);
     CustomRequestInterceptor<K> newInterceptor =
         new CustomRequestInterceptor<>(apiClient.getObjectMapper(), requestClass);
     apiClient.addAuthorization(REQUEST_INTERCEPTOR_KEY, newInterceptor);
-  }
-
-  public void addRequestInterceptor(String requestInterceptorKey, RequestInterceptor interceptor) {
-    if (apiClient.getApiAuthorizations().containsKey(requestInterceptorKey)) {
-      LOG.info("Interceptor with this key already exists");
-    }
-    apiClient.addAuthorization(requestInterceptorKey, interceptor);
   }
 
   public void validateVersion() {
@@ -107,7 +97,7 @@ public class OpenMetadata {
   }
 
   public String[] getServerVersion() {
-    CatalogApi api = apiClient.buildClient(CatalogApi.class);
+    SystemApi api = apiClient.buildClient(SystemApi.class);
     org.openmetadata.client.model.OpenMetadataServerVersion serverVersion = api.getCatalogVersion();
     return VersionUtils.getVersionFromString(serverVersion.getVersion());
   }

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,10 +11,18 @@
  *  limitations under the License.
  */
 
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { Card, Image, Space, Switch, Typography } from 'antd';
+import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import {
+  Button as AntDButton,
+  Card,
+  Image,
+  Select,
+  Space,
+  Switch,
+  Typography,
+} from 'antd';
 import { AxiosError } from 'axios';
-import { capitalize, isEmpty, isEqual, isNil, toLower } from 'lodash';
+import { capitalize, isEmpty, isEqual, toLower } from 'lodash';
 import { observer } from 'mobx-react';
 import React, {
   Fragment,
@@ -26,14 +34,13 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHistory, useLocation } from 'react-router-dom';
-import Select from 'react-select';
-import { useAuthContext } from '../../authentication/auth-provider/AuthProvider';
-import { changePassword } from '../../axiosAPIs/auth-API';
-import { getRoles } from '../../axiosAPIs/rolesAPIV1';
-import { getTeams } from '../../axiosAPIs/teamsAPI';
+import { changePassword } from 'rest/auth-API';
+import { getRoles } from 'rest/rolesAPIV1';
+import { getTeams } from 'rest/teamsAPI';
+import { getEntityName } from 'utils/EntityUtils';
 import {
   getUserPath,
-  LIST_SIZE,
+  PAGE_SIZE,
   PAGE_SIZE_LARGE,
   TERM_ADMIN,
 } from '../../constants/constants';
@@ -57,7 +64,6 @@ import { Paging } from '../../generated/type/paging';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 import jsonData from '../../jsons/en';
 import {
-  getEntityName,
   getNonDeletedTeams,
   getTierFromEntityInfo,
 } from '../../utils/CommonUtils';
@@ -69,21 +75,24 @@ import { dropdownIcon as DropDownIcon } from '../../utils/svgconstant';
 import SVGIcons, { Icons } from '../../utils/SvgUtils';
 import { showErrorToast, showSuccessToast } from '../../utils/ToastUtils';
 import ActivityFeedList from '../ActivityFeed/ActivityFeedList/ActivityFeedList';
-import { filterListTasks } from '../ActivityFeed/ActivityFeedList/ActivityFeedList.util';
+import {
+  filterListTasks,
+  getFeedFilterDropdownIcon,
+} from '../ActivityFeed/ActivityFeedList/ActivityFeedList.util';
+import { useAuthContext } from '../authentication/auth-provider/AuthProvider';
 import { Button } from '../buttons/Button/Button';
 import Description from '../common/description/Description';
 import ErrorPlaceHolder from '../common/error-with-placeholder/ErrorPlaceHolder';
 import NextPrevious from '../common/next-previous/NextPrevious';
 import ProfilePicture from '../common/ProfilePicture/ProfilePicture';
-import { reactSingleSelectCustomStyle } from '../common/react-select-component/reactSelectCustomStyle';
 import TableDataCard from '../common/table-data-card/TableDataCard';
 import TabsPane from '../common/TabsPane/TabsPane';
-import { leftPanelAntCardStyle } from '../containers/PageLayout';
 import PageLayoutV1 from '../containers/PageLayoutV1';
 import DropDownList from '../dropdown/DropDownList';
 import Loader from '../Loader/Loader';
 import ChangePasswordForm from './ChangePasswordForm';
-import { Option, Props } from './Users.interface';
+import { Props } from './Users.interface';
+import './Users.style.less';
 import { userPageFilterList } from './Users.util';
 
 const Users = ({
@@ -92,6 +101,7 @@ const Users = ({
   ownedEntities,
   feedData,
   isFeedLoading,
+  isUserEntitiesLoading,
   postFeedHandler,
   deletePostHandler,
   fetchFeedHandler,
@@ -117,8 +127,8 @@ const Users = ({
   const [isDescriptionEdit, setIsDescriptionEdit] = useState(false);
   const [isRolesEdit, setIsRolesEdit] = useState(false);
   const [isTeamsEdit, setIsTeamsEdit] = useState(false);
-  const [selectedRoles, setSelectedRoles] = useState<Array<Option>>([]);
-  const [selectedTeams, setSelectedTeams] = useState<Array<Option>>([]);
+  const [selectedRoles, setSelectedRoles] = useState<Array<string>>([]);
+  const [selectedTeams, setSelectedTeams] = useState<Array<string>>([]);
   const [teams, setTeams] = useState<Array<Team>>([]);
   const [roles, setRoles] = useState<Array<Role>>([]);
   const history = useHistory();
@@ -128,6 +138,8 @@ const Users = ({
   const location = useLocation();
   const isTaskType = isEqual(threadType, ThreadType.Task);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRolesLoading, setIsRolesLoading] = useState<boolean>(false);
+  const [isTeamsLoading, setIsTeamsLoading] = useState<boolean>(false);
 
   const { authConfig } = useAuthContext();
   const { t } = useTranslation();
@@ -151,21 +163,23 @@ const Users = ({
     [threadType, fetchFeedHandler]
   );
 
-  const fetchTeams = () => {
-    getTeams(['users'])
-      .then((res) => {
-        if (res.data) {
-          setTeams(res.data);
-        } else {
-          throw jsonData['api-error-messages']['unexpected-server-response'];
-        }
-      })
-      .catch((err: AxiosError) => {
-        showErrorToast(
-          err,
-          jsonData['api-error-messages']['fetch-teams-error']
-        );
-      });
+  const fetchTeams = async () => {
+    setIsTeamsLoading(true);
+    try {
+      const response = await getTeams(['users']);
+      if (response.data) {
+        setTeams(response.data);
+      } else {
+        throw t('server.unexpected-response');
+      }
+    } catch (error) {
+      showErrorToast(
+        error as AxiosError,
+        t('server.entity-fetch-error', { entity: t('label.team') })
+      );
+    } finally {
+      setIsTeamsLoading(false);
+    }
   };
 
   const onDisplayNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -201,16 +215,15 @@ const Users = ({
   const handleRolesChange = () => {
     // filter out the roles , and exclude the admin one
     const updatedRoles = selectedRoles.filter(
-      (role) => role.value !== toLower(TERM_ADMIN)
+      (roleId) => roleId !== toLower(TERM_ADMIN)
     );
 
     // get the admin role and send it as boolean value `isAdmin=Boolean(isAdmin)
     const isAdmin = selectedRoles.find(
-      (role) => role.value === toLower(TERM_ADMIN)
+      (roleId) => roleId === toLower(TERM_ADMIN)
     );
     updateUserDetails({
-      roles: updatedRoles.map((item) => {
-        const roleId = item.value;
+      roles: updatedRoles.map((roleId) => {
         const role = roles.find((r) => r.id === roleId);
 
         return { id: roleId, type: 'role', name: role?.name || '' };
@@ -222,8 +235,7 @@ const Users = ({
   };
   const handleTeamsChange = () => {
     updateUserDetails({
-      teams: selectedTeams.map((item) => {
-        const teamId = item.value;
+      teams: selectedTeams.map((teamId) => {
         const team = teams.find((t) => t.id === teamId);
 
         return { id: teamId, type: 'team', name: team?.name || '' };
@@ -233,25 +245,12 @@ const Users = ({
     setIsTeamsEdit(false);
   };
 
-  const handleOnRolesChange = (
-    value: unknown,
-    { action }: { action: string }
-  ) => {
-    if (isNil(value) || action === 'clear') {
-      setSelectedRoles([]);
-    } else {
-      setSelectedRoles(value as Option[]);
-    }
+  const handleOnRolesChange = (value: string[]) => {
+    setSelectedRoles(value);
   };
-  const handleOnTeamsChange = (
-    value: unknown,
-    { action }: { action: string }
-  ) => {
-    if (isNil(value) || action === 'clear') {
-      setSelectedTeams([]);
-    } else {
-      setSelectedTeams(value as Option[]);
-    }
+
+  const handleOnTeamsChange = (value: string[]) => {
+    setSelectedTeams(value);
   };
 
   const handleChangePassword = async (data: ChangePasswordRequest) => {
@@ -268,7 +267,7 @@ const Users = ({
       await changePassword(sendData);
       setIsChangePassword(false);
       showSuccessToast(
-        jsonData['api-success-messages']['update-password-success']
+        t('server.update-entity-success', { entity: t('label.password') })
       );
     } catch (err) {
       showErrorToast(err as AxiosError);
@@ -292,7 +291,7 @@ const Users = ({
                 data-testid="displayName"
                 id="displayName"
                 name="displayName"
-                placeholder="displayName"
+                placeholder={t('label.display-name')}
                 type="text"
                 value={displayName}
                 onChange={onDisplayNameChange}
@@ -305,7 +304,7 @@ const Users = ({
                   theme="primary"
                   variant="contained"
                   onMouseDown={() => setIsDisplayNameEdit(false)}>
-                  <FontAwesomeIcon className="tw-w-3.5 tw-h-3.5" icon="times" />
+                  <CloseOutlined />
                 </Button>
                 <Button
                   className="tw-px-1 tw-py-1 tw-rounded tw-text-sm"
@@ -314,14 +313,15 @@ const Users = ({
                   theme="primary"
                   variant="contained"
                   onClick={handleDisplayNameChange}>
-                  <FontAwesomeIcon className="tw-w-3.5 tw-h-3.5" icon="check" />
+                  <CheckOutlined />
                 </Button>
               </div>
             </Space>
           ) : (
             <Fragment>
               <span className="tw-text-base tw-font-medium tw-mr-2 tw-overflow-auto">
-                {userData.displayName || 'Add display name'}
+                {userData.displayName ||
+                  t('label.add-entity', { entity: t('label.display-name') })}
               </span>
               <button
                 className="tw-ml-2 focus:tw-outline-none"
@@ -369,7 +369,9 @@ const Users = ({
           <p className="m-t-xs">
             {userData.description || (
               <span className="tw-no-description">
-                {t('label.no-description')}
+                {t('label.no-entity', {
+                  entity: t('label.description'),
+                })}
               </span>
             )}
           </p>
@@ -384,7 +386,7 @@ const Users = ({
         <Typography.Text
           className="text-primary text-xs cursor-pointer"
           onClick={() => setIsChangePassword(true)}>
-          Change Password
+          {t('label.change-entity', { entity: t('label.password-lowercase') })}
         </Typography.Text>
 
         <ChangePasswordForm
@@ -415,7 +417,9 @@ const Users = ({
           </div>
         ))}
         {isEmpty(userData.teams) && (
-          <span className="tw-no-description ">No teams found</span>
+          <span className="tw-no-description ">
+            {t('message.no-team-found')}
+          </span>
         )}
       </Fragment>
     );
@@ -423,15 +427,14 @@ const Users = ({
     if (!isAdminUser && !isAuthDisabled) {
       return (
         <Card
-          className="ant-card-feed tw-relative"
+          className="ant-card-feed tw-relative panel-shadow-color"
           key="teams-card"
           style={{
-            ...leftPanelAntCardStyle,
             marginTop: '20px',
           }}
           title={
             <div className="tw-flex tw-items-center tw-justify-between">
-              <h6 className="tw-heading tw-mb-0">Teams</h6>
+              <h6 className="tw-heading tw-mb-0">{t('label.team-plural')}</h6>
             </div>
           }>
           <div className="tw-mb-4">{teamsElement}</div>
@@ -440,15 +443,14 @@ const Users = ({
     } else {
       return (
         <Card
-          className="ant-card-feed tw-relative"
+          className="ant-card-feed tw-relative panel-shadow-color"
           key="teams-card"
           style={{
-            ...leftPanelAntCardStyle,
             marginTop: '20px',
           }}
           title={
             <div className="tw-flex tw-items-center tw-justify-between">
-              <h6 className="tw-heading tw-mb-0">Teams</h6>
+              <h6 className="tw-heading tw-mb-0">{t('label.team-plural')}</h6>
               {!isTeamsEdit && (
                 <button
                   className="tw-ml-2 focus:tw-outline-none tw-self-baseline"
@@ -469,18 +471,20 @@ const Users = ({
             {isTeamsEdit ? (
               <Space className="tw-w-full" direction="vertical">
                 <Select
-                  isClearable
-                  isMulti
-                  isSearchable
-                  aria-label="Select teams"
-                  className="tw-w-full"
+                  allowClear
+                  showSearch
+                  aria-label={t('label.select-field', {
+                    field: t('label.team-plural-lowercase'),
+                  })}
+                  className="w-full"
+                  loading={isTeamsLoading}
+                  mode="multiple"
                   options={teams?.map((team) => ({
                     label: getEntityName(team as unknown as EntityReference),
                     value: team.id,
                   }))}
-                  placeholder="Teams..."
-                  styles={reactSingleSelectCustomStyle}
-                  value={selectedTeams}
+                  placeholder={t('label.team-plural')}
+                  value={!isTeamsLoading ? selectedTeams : []}
                   onChange={handleOnTeamsChange}
                 />
                 <div className="tw-flex tw-justify-end" data-testid="buttons">
@@ -491,10 +495,7 @@ const Users = ({
                     theme="primary"
                     variant="contained"
                     onMouseDown={() => setIsTeamsEdit(false)}>
-                    <FontAwesomeIcon
-                      className="tw-w-3.5 tw-h-3.5"
-                      icon="times"
-                    />
+                    <CloseOutlined />
                   </Button>
                   <Button
                     className="tw-px-1 tw-py-1 tw-rounded tw-text-sm"
@@ -503,10 +504,7 @@ const Users = ({
                     theme="primary"
                     variant="contained"
                     onClick={handleTeamsChange}>
-                    <FontAwesomeIcon
-                      className="tw-w-3.5 tw-h-3.5"
-                      icon="check"
-                    />
+                    <CheckOutlined />
                   </Button>
                 </div>
               </Space>
@@ -551,7 +549,7 @@ const Users = ({
         ))}
         {!userData.isAdmin && isEmpty(userData.roles) && (
           <span className="tw-no-description ">
-            {t('label.no-roles-assigned')}
+            {t('message.no-roles-assigned')}
           </span>
         )}
       </Fragment>
@@ -561,33 +559,29 @@ const Users = ({
       return (
         <Card
           className="ant-card-feed tw-relative"
-          key="roles-card"
+          key="roles-card panel-shadow-color"
           style={{
-            ...leftPanelAntCardStyle,
             marginTop: '20px',
           }}
           title={
             <div className="tw-flex tw-items-center tw-justify-between">
-              <h6 className="tw-heading tw-mb-0">{t('label.roles')}</h6>
+              <h6 className="tw-heading tw-mb-0">{t('label.role-plural')}</h6>
             </div>
           }>
-          <div className="tw-flex tw-items-center tw-justify-between tw-mb-4">
-            {rolesElement}
-          </div>
+          <div className="roles-container">{rolesElement}</div>
         </Card>
       );
     } else {
       return (
         <Card
-          className="ant-card-feed tw-relative"
+          className="ant-card-feed tw-relative panel-shadow-color"
           key="roles-card"
           style={{
-            ...leftPanelAntCardStyle,
             marginTop: '20px',
           }}
           title={
             <div className="tw-flex tw-items-center tw-justify-between">
-              <h6 className="tw-heading tw-mb-0">{t('label.roles')}</h6>
+              <h6 className="tw-heading tw-mb-0">{t('label.role-plural')}</h6>
               {!isRolesEdit && (
                 <button
                   className="tw-ml-2 focus:tw-outline-none tw-self-baseline"
@@ -608,18 +602,19 @@ const Users = ({
             {isRolesEdit ? (
               <Space className="tw-w-full" direction="vertical">
                 <Select
-                  isClearable
-                  isMulti
-                  isSearchable
+                  allowClear
+                  showSearch
                   aria-label="Select roles"
-                  className="tw-w-full"
+                  className="w-full"
                   id="select-role"
+                  loading={isRolesLoading}
+                  mode="multiple"
                   options={userRolesOption}
-                  placeholder="Roles..."
-                  styles={reactSingleSelectCustomStyle}
-                  value={selectedRoles}
+                  placeholder={t('label.role-plural')}
+                  value={!isRolesLoading ? selectedRoles : []}
                   onChange={handleOnRolesChange}
                 />
+
                 <div className="tw-flex tw-justify-end" data-testid="buttons">
                   <Button
                     className="tw-px-1 tw-py-1 tw-rounded tw-text-sm tw-mr-1"
@@ -628,10 +623,7 @@ const Users = ({
                     theme="primary"
                     variant="contained"
                     onMouseDown={() => setIsRolesEdit(false)}>
-                    <FontAwesomeIcon
-                      className="tw-w-3.5 tw-h-3.5"
-                      icon="times"
-                    />
+                    <CloseOutlined />
                   </Button>
                   <Button
                     className="tw-px-1 tw-py-1 tw-rounded tw-text-sm"
@@ -640,10 +632,7 @@ const Users = ({
                     theme="primary"
                     variant="contained"
                     onClick={handleRolesChange}>
-                    <FontAwesomeIcon
-                      className="tw-w-3.5 tw-h-3.5"
-                      icon="check"
-                    />
+                    <CheckOutlined />
                   </Button>
                 </div>
               </Space>
@@ -659,16 +648,15 @@ const Users = ({
   const getInheritedRolesComponent = () => {
     return (
       <Card
-        className="ant-card-feed tw-relative"
+        className="ant-card-feed tw-relative panel-shadow-color"
         key="inherited-roles-card-component"
         style={{
-          ...leftPanelAntCardStyle,
           marginTop: '20px',
         }}
         title={
           <div className="tw-flex">
             <h6 className="tw-heading tw-mb-0" data-testid="inherited-roles">
-              {t('label.inherited-roles')}
+              {t('label.inherited-role-plural')}
             </h6>
           </div>
         }>
@@ -676,7 +664,7 @@ const Users = ({
           {isEmpty(userData.inheritedRoles) ? (
             <div className="tw-mb-4">
               <span className="tw-no-description">
-                {t('label.no-inherited-found')}
+                {t('message.no-inherited-roles-found')}
               </span>
             </div>
           ) : (
@@ -714,11 +702,8 @@ const Users = ({
     return (
       <div className="user-profile-antd-card" data-testid="left-panel">
         <Card
-          className="ant-card-feed tw-relative"
-          key="left-panel-card"
-          style={{
-            ...leftPanelAntCardStyle,
-          }}>
+          className="ant-card-feed tw-relative panel-shadow-color"
+          key="left-panel-card">
           {isImgUrlValid ? (
             <Image
               alt="profile"
@@ -765,14 +750,13 @@ const Users = ({
   const getFeedTabData = () => {
     return (
       <Fragment>
-        <div className="tw--mt-4 tw-px-1.5 tw-flex tw-justify-between">
+        <div className="px-1.5 d-flex justify-between">
           <div className="tw-relative">
-            <Button
-              className="hover:tw-no-underline focus:tw-no-underline"
+            <AntDButton
+              className="flex items-center p-0"
               data-testid="feeds"
-              size="custom"
-              tag="button"
-              variant="link"
+              icon={getFeedFilterDropdownIcon(feedFilter)}
+              type="link"
               onClick={() => setShowFilterList((visible) => !visible)}>
               <span className="tw-font-medium tw-text-grey">
                 {(activeTab === 1 ? userPageFilterList : filterListTasks).find(
@@ -780,7 +764,7 @@ const Users = ({
                 )?.name || capitalize(feedFilter)}
               </span>
               <DropDownIcon />
-            </Button>
+            </AntDButton>
             {showFilterList && (
               <DropDownList
                 dropDownList={
@@ -794,11 +778,11 @@ const Users = ({
           {isTaskType ? (
             <Space align="end" size={5}>
               <Switch onChange={onSwitchChange} />
-              <span className="tw-ml-1">{t('label.closed-tasks')}</span>
+              <span className="tw-ml-1">{t('label.closed-task-plural')}</span>
             </Space>
           ) : null}
         </div>
-        <div className="tw-mt-3.5">
+        <div className="m-t-xs">
           <ActivityFeedList
             hideFeedFilter
             hideThreadFilter
@@ -806,6 +790,7 @@ const Users = ({
             className=""
             deletePostHandler={deletePostHandler}
             feedList={feedData}
+            isFeedLoading={isFeedLoading}
             postFeedHandler={postFeedHandler}
             updateThreadHandler={updateThreadHandler}
           />
@@ -821,27 +806,16 @@ const Users = ({
   };
 
   const prepareSelectedRoles = () => {
-    const defaultRoles = [
-      ...(userData.roles?.map((role) => ({
-        label: getEntityName(role),
-        value: role.id,
-      })) || []),
-    ];
+    const defaultRoles = [...(userData.roles?.map((role) => role.id) || [])];
     if (userData.isAdmin) {
-      defaultRoles.push({
-        label: TERM_ADMIN,
-        value: toLower(TERM_ADMIN),
-      });
+      defaultRoles.push(toLower(TERM_ADMIN));
     }
     setSelectedRoles(defaultRoles);
   };
 
   const prepareSelectedTeams = () => {
     setSelectedTeams(
-      getNonDeletedTeams(userData.teams || []).map((team) => ({
-        label: getEntityName(team),
-        value: team.id,
-      }))
+      getNonDeletedTeams(userData.teams || []).map((team) => team.id)
     );
   };
 
@@ -858,6 +832,7 @@ const Users = ({
   };
 
   const fetchRoles = async () => {
+    setIsRolesLoading(true);
     try {
       const response = await getRoles(
         '',
@@ -873,17 +848,14 @@ const Users = ({
         err as AxiosError,
         jsonData['api-error-messages']['fetch-roles-error']
       );
+    } finally {
+      setIsRolesLoading(false);
     }
   };
 
   useEffect(() => {
     fetchMoreFeed(isInView as boolean, paging, isFeedLoading);
   }, [isInView, paging, isFeedLoading]);
-
-  useEffect(() => {
-    fetchTeams();
-    fetchRoles();
-  }, []);
 
   useEffect(() => {
     prepareSelectedRoles();
@@ -896,9 +868,24 @@ const Users = ({
     }
   }, [image]);
 
+  useEffect(() => {
+    if (isRolesEdit && isEmpty(roles)) {
+      fetchRoles();
+    }
+  }, [isRolesEdit, roles]);
+
+  useEffect(() => {
+    if (isTeamsEdit && isEmpty(teams)) {
+      fetchTeams();
+    }
+  }, [isTeamsEdit, teams]);
+
   const getEntityData = useCallback(
     (tabNumber: number) => {
       const entityData = tabNumber === 3 ? ownedEntities : followingEntities;
+      if (isUserEntitiesLoading) {
+        return <Loader />;
+      }
 
       return (
         <div data-testid="table-container">
@@ -924,11 +911,11 @@ const Users = ({
                   />
                 </div>
               ))}
-              {entityData.total > LIST_SIZE && entityData.data.length > 0 && (
+              {entityData.total > PAGE_SIZE && entityData.data.length > 0 && (
                 <NextPrevious
                   isNumberBased
                   currentPage={entityData.currPage}
-                  pageSize={LIST_SIZE}
+                  pageSize={PAGE_SIZE}
                   paging={{} as Paging}
                   pagingHandler={
                     tabNumber === 3
@@ -953,12 +940,15 @@ const Users = ({
         </div>
       );
     },
-    [followingEntities, ownedEntities]
+    [followingEntities, ownedEntities, isUserEntitiesLoading]
   );
 
   return (
-    <PageLayoutV1 className="tw-h-full" leftPanel={fetchLeftPanel()}>
-      <div className="tw-mb-10">
+    <PageLayoutV1
+      className="tw-h-full"
+      leftPanel={fetchLeftPanel()}
+      pageTitle={t('label.user')}>
+      <div className="m-b-md">
         <TabsPane
           activeTab={activeTab}
           className="tw-flex-initial"

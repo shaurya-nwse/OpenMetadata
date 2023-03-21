@@ -1,5 +1,19 @@
+/*
+ *  Copyright 2021 Collate
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.openmetadata.service.util;
 
+import static org.openmetadata.common.utils.CommonUtil.listOf;
 import static org.openmetadata.common.utils.CommonUtil.nullOrEmpty;
 import static org.openmetadata.schema.auth.SSOAuthMechanism.SsoServiceType.AUTH_0;
 import static org.openmetadata.schema.auth.SSOAuthMechanism.SsoServiceType.AZURE;
@@ -18,8 +32,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
-import org.openmetadata.schema.api.configuration.airflow.AirflowConfiguration;
-import org.openmetadata.schema.api.security.AuthenticationConfiguration;
+import org.openmetadata.api.configuration.airflow.AuthConfiguration;
+import org.openmetadata.schema.api.configuration.pipelineServiceClient.PipelineServiceClientConfiguration;
 import org.openmetadata.schema.auth.BasicAuthMechanism;
 import org.openmetadata.schema.auth.JWTAuthMechanism;
 import org.openmetadata.schema.auth.JWTTokenExpiry;
@@ -27,11 +41,13 @@ import org.openmetadata.schema.auth.SSOAuthMechanism;
 import org.openmetadata.schema.entity.teams.AuthenticationMechanism;
 import org.openmetadata.schema.entity.teams.User;
 import org.openmetadata.schema.security.client.OpenMetadataJWTClientConfig;
+import org.openmetadata.schema.type.EntityReference;
 import org.openmetadata.service.Entity;
 import org.openmetadata.service.OpenMetadataApplicationConfig;
 import org.openmetadata.service.exception.EntityNotFoundException;
 import org.openmetadata.service.jdbi3.EntityRepository;
 import org.openmetadata.service.jdbi3.UserRepository;
+import org.openmetadata.service.resources.teams.RoleResource;
 import org.openmetadata.service.security.jwt.JWTTokenGenerator;
 
 @Slf4j
@@ -59,7 +75,7 @@ public final class UserUtil {
   }
 
   public static void addUserForBasicAuth(String username, String pwd, String domain) throws IOException {
-    EntityRepository<User> userRepository = Entity.getEntityRepository(Entity.USER);
+    UserRepository userRepository = (UserRepository) Entity.getEntityRepository(Entity.USER);
     User originalUser;
     try {
       List<String> fields = userRepository.getAllowedFieldsCopy();
@@ -94,7 +110,7 @@ public final class UserUtil {
   }
 
   public static User addOrUpdateUser(User user) {
-    EntityRepository<User> userRepository = Entity.getEntityRepository(Entity.USER);
+    UserRepository userRepository = (UserRepository) Entity.getEntityRepository(Entity.USER);
     try {
       RestUtil.PutResponse<User> addedUser = userRepository.createOrUpdate(null, user);
       // should not log the user auth details in LOGS
@@ -140,58 +156,59 @@ public final class UserUtil {
    */
   public static User addOrUpdateBotUser(User user, OpenMetadataApplicationConfig openMetadataApplicationConfig) {
     User originalUser = retrieveWithAuthMechanism(user);
-    // the user did not have an auth mechanism
+    PipelineServiceClientConfiguration pipelineServiceClientConfiguration =
+        openMetadataApplicationConfig.getPipelineServiceClientConfiguration();
     AuthenticationMechanism authMechanism = originalUser != null ? originalUser.getAuthenticationMechanism() : null;
-    if (authMechanism == null) {
-      AuthenticationConfiguration authConfig = openMetadataApplicationConfig.getAuthenticationConfiguration();
-      AirflowConfiguration airflowConfig = openMetadataApplicationConfig.getAirflowConfiguration();
+    // the user did not have an auth mechanism and auth config is present
+    if (authConfigPresent(pipelineServiceClientConfiguration) && authMechanism == null) {
+      AuthConfiguration authConfig = pipelineServiceClientConfiguration.getAuthConfig();
+      String currentAuthProvider = openMetadataApplicationConfig.getAuthenticationConfiguration().getProvider();
       // if the auth provider is "openmetadata" in the configuration set JWT as auth mechanism
-      if ("openmetadata".equals(airflowConfig.getAuthProvider()) && !"basic".equals(authConfig.getProvider())) {
-        OpenMetadataJWTClientConfig jwtClientConfig = airflowConfig.getAuthConfig().getOpenmetadata();
+      if ("openmetadata".equals(pipelineServiceClientConfiguration.getAuthProvider())
+          && !"basic".equals(currentAuthProvider)) {
+        OpenMetadataJWTClientConfig jwtClientConfig = authConfig.getOpenmetadata();
         authMechanism = buildAuthMechanism(JWT, buildJWTAuthMechanism(jwtClientConfig, user));
-      } else {
-        // Otherwise, set auth mechanism from airflow configuration
         // TODO: https://github.com/open-metadata/OpenMetadata/issues/7712
-        if (airflowConfig.getAuthConfig() != null && !"basic".equals(authConfig.getProvider())) {
-          switch (authConfig.getProvider()) {
-            case "no-auth":
-              break;
-            case "azure":
-              authMechanism =
-                  buildAuthMechanism(SSO, buildAuthMechanismConfig(AZURE, airflowConfig.getAuthConfig().getAzure()));
-              break;
-            case "google":
-              authMechanism =
-                  buildAuthMechanism(SSO, buildAuthMechanismConfig(GOOGLE, airflowConfig.getAuthConfig().getGoogle()));
-              break;
-            case "okta":
-              authMechanism =
-                  buildAuthMechanism(SSO, buildAuthMechanismConfig(OKTA, airflowConfig.getAuthConfig().getOkta()));
-              break;
-            case "auth0":
-              authMechanism =
-                  buildAuthMechanism(SSO, buildAuthMechanismConfig(AUTH_0, airflowConfig.getAuthConfig().getAuth0()));
-              break;
-            case "custom-oidc":
-              authMechanism =
-                  buildAuthMechanism(
-                      SSO, buildAuthMechanismConfig(CUSTOM_OIDC, airflowConfig.getAuthConfig().getCustomOidc()));
-              break;
-            default:
-              throw new IllegalArgumentException(
-                  String.format(
-                      "Unexpected auth provider [%s] for bot [%s]", authConfig.getProvider(), user.getName()));
-          }
-        } else if ("basic".equals(authConfig.getProvider())) {
-          authMechanism = buildAuthMechanism(JWT, buildJWTAuthMechanism(null, user));
+      } else if (!"basic".equals(currentAuthProvider)) {
+        switch (currentAuthProvider) {
+          case "no-auth":
+            break;
+          case "azure":
+            authMechanism = buildAuthMechanism(SSO, buildAuthMechanismConfig(AZURE, authConfig.getAzure()));
+            break;
+          case "google":
+            authMechanism = buildAuthMechanism(SSO, buildAuthMechanismConfig(GOOGLE, authConfig.getGoogle()));
+            break;
+          case "okta":
+            authMechanism = buildAuthMechanism(SSO, buildAuthMechanismConfig(OKTA, authConfig.getOkta()));
+            break;
+          case "auth0":
+            authMechanism = buildAuthMechanism(SSO, buildAuthMechanismConfig(AUTH_0, authConfig.getAuth0()));
+            break;
+          case "custom-oidc":
+            authMechanism = buildAuthMechanism(SSO, buildAuthMechanismConfig(CUSTOM_OIDC, authConfig.getCustomOidc()));
+            break;
+          default:
+            throw new IllegalArgumentException(
+                String.format("Unexpected auth provider [%s] for bot [%s]", currentAuthProvider, user.getName()));
         }
+      } else {
+        authMechanism = buildAuthMechanism(JWT, buildJWTAuthMechanism(null, user));
+      }
+    } else {
+      // if auth config not present in airflow configuration and the user did not have an auth mechanism
+      if (authMechanism == null) {
+        authMechanism = buildAuthMechanism(JWT, buildJWTAuthMechanism(null, user));
       }
     }
     user.setAuthenticationMechanism(authMechanism);
     user.setDescription(user.getDescription());
     user.setDisplayName(user.getDisplayName());
-    user.setUpdatedBy(ADMIN_USER_NAME);
-    return UserUtil.addOrUpdateUser(user);
+    return addOrUpdateUser(user);
+  }
+
+  private static boolean authConfigPresent(PipelineServiceClientConfiguration pipelineServiceClientConfiguration) {
+    return pipelineServiceClientConfiguration != null && pipelineServiceClientConfiguration.getAuthConfig() != null;
   }
 
   private static JWTAuthMechanism buildJWTAuthMechanism(OpenMetadataJWTClientConfig jwtClientConfig, User user) {
@@ -219,5 +236,23 @@ public final class UserUtil {
       LOG.debug("Bot entity: {} does not exists.", user);
       return null;
     }
+  }
+
+  public static List<EntityReference> getRoleForBot(String botName) {
+    String botRole;
+    switch (botName) {
+      case Entity.INGESTION_BOT_NAME:
+        botRole = Entity.INGESTION_BOT_ROLE;
+        break;
+      case Entity.QUALITY_BOT_NAME:
+        botRole = Entity.QUALITY_BOT_ROLE;
+        break;
+      case Entity.PROFILER_BOT_NAME:
+        botRole = Entity.PROFILER_BOT_ROLE;
+        break;
+      default:
+        throw new IllegalArgumentException("No role found for the bot " + botName);
+    }
+    return listOf(RoleResource.getRole(botRole));
   }
 }

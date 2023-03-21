@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,28 +11,29 @@
  *  limitations under the License.
  */
 
-import { Typography } from 'antd';
+import { Space, Typography } from 'antd';
 import { AxiosError } from 'axios';
+import ErrorPlaceHolder from 'components/common/error-with-placeholder/ErrorPlaceHolder';
+import TitleBreadcrumb from 'components/common/title-breadcrumb/title-breadcrumb.component';
+import { TitleBreadcrumbProps } from 'components/common/title-breadcrumb/title-breadcrumb.interface';
+import PageContainerV1 from 'components/containers/PageContainerV1';
+import PageLayoutV1 from 'components/containers/PageLayoutV1';
+import Loader from 'components/Loader/Loader';
+import ServiceConfig from 'components/ServiceConfig/ServiceConfig';
 import { startCase } from 'lodash';
-import { ServiceOption, ServicesData, ServiceTypes } from 'Models';
+import { ServicesData, ServicesUpdateRequest, ServiceTypes } from 'Models';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
-import { getServiceByFQN, updateService } from '../../axiosAPIs/serviceAPI';
-import ErrorPlaceHolder from '../../components/common/error-with-placeholder/ErrorPlaceHolder';
-import TitleBreadcrumb from '../../components/common/title-breadcrumb/title-breadcrumb.component';
-import { TitleBreadcrumbProps } from '../../components/common/title-breadcrumb/title-breadcrumb.interface';
-import PageContainerV1 from '../../components/containers/PageContainerV1';
-import PageLayout from '../../components/containers/PageLayout';
-import Loader from '../../components/Loader/Loader';
-import ServiceConfig from '../../components/ServiceConfig/ServiceConfig';
+import { getServiceByFQN, updateService } from 'rest/serviceAPI';
+import { getEntityName } from 'utils/EntityUtils';
 import { GlobalSettingsMenuCategory } from '../../constants/GlobalSettings.constants';
 import { addServiceGuide } from '../../constants/service-guide.constant';
 import { OPENMETADATA } from '../../constants/Services.constant';
-import { PageLayoutType } from '../../enums/layout.enum';
 import { ServiceCategory } from '../../enums/service.enum';
 import { ConfigData, ServicesType } from '../../interface/service.interface';
 import jsonData from '../../jsons/en';
-import { getEntityMissingError, getEntityName } from '../../utils/CommonUtils';
+import { getEntityMissingError } from '../../utils/CommonUtils';
 import { getPathByServiceFQN, getSettingPath } from '../../utils/RouterUtils';
 import {
   getServiceRouteFromServiceType,
@@ -41,6 +42,7 @@ import {
 import { showErrorToast } from '../../utils/ToastUtils';
 
 function EditConnectionFormPage() {
+  const { t } = useTranslation();
   const { serviceFQN, serviceCategory } = useParams() as Record<string, string>;
   const [isLoading, setIsloading] = useState(true);
   const [isError, setIsError] = useState(false);
@@ -71,8 +73,7 @@ function EditConnectionFormPage() {
       connection: {
         config: updatedData,
       },
-      // TODO: fix type issue here
-    } as unknown as ServiceOption;
+    } as ServicesUpdateRequest;
 
     return new Promise<void>((resolve, reject) => {
       updateService(serviceCategory, serviceDetails?.id ?? '', configData)
@@ -120,7 +121,7 @@ function EditConnectionFormPage() {
               url: getPathByServiceFQN(serviceCategory, serviceFQN),
             },
             {
-              name: 'Edit Connection',
+              name: t('label.edit-entity', { entity: t('label.connection') }),
               url: '',
               activeTitle: true,
             },
@@ -150,28 +151,32 @@ function EditConnectionFormPage() {
         {getEntityMissingError(serviceCategory, serviceFQN)}
       </ErrorPlaceHolder>
     ) : (
-      <PageLayout
-        classes="w-max-1080 h-full p-t-xss"
-        header={<TitleBreadcrumb titleLinks={slashedBreadcrumb} />}
-        layout={PageLayoutType['2ColRTL']}
-        rightPanel={fetchRightPanel()}>
-        <div className="form-container">
-          <Typography.Title level={5}>
-            {`Edit ${serviceFQN} Service Connection`}
-          </Typography.Title>
-          <ServiceConfig
-            data={serviceDetails as ServicesData}
-            disableTestConnection={
-              ServiceCategory.METADATA_SERVICES === serviceCategory &&
-              OPENMETADATA === serviceFQN
-            }
-            handleUpdate={handleConfigUpdate}
-            serviceCategory={serviceCategory as ServiceCategory}
-            serviceFQN={serviceFQN}
-            serviceType={serviceDetails?.serviceType || ''}
-          />
-        </div>
-      </PageLayout>
+      <PageLayoutV1
+        center
+        pageTitle={t('label.edit-entity', { entity: t('label.connection') })}>
+        <Space direction="vertical" size="middle">
+          <TitleBreadcrumb titleLinks={slashedBreadcrumb} />
+          <div className="form-container">
+            <Typography.Title level={5}>
+              {t('message.edit-service-entity-connection', {
+                entity: serviceFQN,
+              })}
+            </Typography.Title>
+            <ServiceConfig
+              data={serviceDetails as ServicesData}
+              disableTestConnection={
+                ServiceCategory.METADATA_SERVICES === serviceCategory &&
+                OPENMETADATA === serviceFQN
+              }
+              handleUpdate={handleConfigUpdate}
+              serviceCategory={serviceCategory as ServiceCategory}
+              serviceFQN={serviceFQN}
+              serviceType={serviceDetails?.serviceType || ''}
+            />
+          </div>
+        </Space>
+        <div className="m-t-xlg p-x-lg w-800">{fetchRightPanel()}</div>
+      </PageLayoutV1>
     );
   };
 

@@ -14,9 +14,10 @@ Hosts the singledispatch to get DBT files
 import json
 import traceback
 from functools import singledispatch
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import requests
+from pydantic import BaseModel
 
 from metadata.generated.schema.metadataIngestion.dbtconfig.dbtCloudConfig import (
     DbtCloudConfig,
@@ -33,14 +34,32 @@ from metadata.generated.schema.metadataIngestion.dbtconfig.dbtLocalConfig import
 from metadata.generated.schema.metadataIngestion.dbtconfig.dbtS3Config import (
     DbtS3Config,
 )
-from metadata.ingestion.ometa.utils import ometa_logger
 from metadata.utils.credentials import set_google_credentials
+from metadata.utils.logger import ometa_logger
 
 logger = ometa_logger()
 
 DBT_CATALOG_FILE_NAME = "catalog.json"
 DBT_MANIFEST_FILE_NAME = "manifest.json"
 DBT_RUN_RESULTS_FILE_NAME = "run_results.json"
+
+
+class DbtFiles(BaseModel):
+    dbt_catalog: Optional[dict]
+    dbt_manifest: dict
+    dbt_run_results: Optional[dict]
+
+
+class DbtObjects(BaseModel):
+    dbt_catalog: Optional[Any]
+    dbt_manifest: Any
+    dbt_run_results: Optional[Any]
+
+
+class DBTConfigException(Exception):
+    """
+    Raise when encountering errors while extacting dbt files
+    """
 
 
 @singledispatch
@@ -59,22 +78,14 @@ def get_dbt_details(config):
 def _(config: DbtLocalConfig):
     try:
         dbt_run_results = None
-        if config.dbtCatalogFilePath is not None:
-            logger.debug(
-                f"Reading [dbtCatalogFilePath] from: {config.dbtCatalogFilePath}"
-            )
-            with open(config.dbtCatalogFilePath, "r", encoding="utf-8") as catalog:
-                dbt_catalog = catalog.read()
+        dbt_catalog = None
         if config.dbtManifestFilePath is not None:
             logger.debug(
                 f"Reading [dbtManifestFilePath] from: {config.dbtCatalogFilePath}"
             )
             with open(config.dbtManifestFilePath, "r", encoding="utf-8") as manifest:
                 dbt_manifest = manifest.read()
-        if (
-            config.dbtRunResultsFilePath is not None
-            and config.dbtRunResultsFilePath != ""
-        ):
+        if config.dbtRunResultsFilePath:
             logger.debug(
                 f"Reading [dbtRunResultsFilePath] from: {config.dbtRunResultsFilePath}"
             )
@@ -82,48 +93,60 @@ def _(config: DbtLocalConfig):
                 config.dbtRunResultsFilePath, "r", encoding="utf-8"
             ) as run_results:
                 dbt_run_results = run_results.read()
-        return (
-            json.loads(dbt_catalog),
-            json.loads(dbt_manifest),
-            json.loads(dbt_run_results) if dbt_run_results else None,
+        if config.dbtCatalogFilePath:
+            logger.debug(
+                f"Reading [dbtCatalogFilePath] from: {config.dbtCatalogFilePath}"
+            )
+            with open(config.dbtCatalogFilePath, "r", encoding="utf-8") as catalog:
+                dbt_catalog = catalog.read()
+        return DbtFiles(
+            dbt_catalog=json.loads(dbt_catalog) if dbt_catalog else None,
+            dbt_manifest=json.loads(dbt_manifest),
+            dbt_run_results=json.loads(dbt_run_results) if dbt_run_results else None,
         )
     except Exception as exc:
         logger.debug(traceback.format_exc())
-        logger.warning(f"Error fetching dbt files from local: {exc}")
-    return None
+        raise DBTConfigException(f"Error fetching dbt files from local: {exc}")
 
 
 @get_dbt_details.register
 def _(config: DbtHttpConfig):
     try:
-        logger.debug(f"Requesting [dbtCatalogHttpPath] to: {config.dbtCatalogHttpPath}")
-        dbt_catalog = requests.get(  # pylint: disable=missing-timeout
-            config.dbtCatalogHttpPath
+        logger.debug(
+            f"Requesting [dbtManifestHttpPath] to: {config.dbtManifestHttpPath}"
         )
-        logger.debug(f"Requesting [dbtCatalogHttpPath] to: {config.dbtCatalogHttpPath}")
         dbt_manifest = requests.get(  # pylint: disable=missing-timeout
             config.dbtManifestHttpPath
         )
         dbt_run_results = None
-        if (
-            config.dbtRunResultsHttpPath is not None
-            and config.dbtRunResultsHttpPath != ""
-        ):
+        if config.dbtRunResultsHttpPath:
             logger.debug(
                 f"Requesting [dbtRunResultsHttpPath] to: {config.dbtRunResultsHttpPath}"
             )
             dbt_run_results = requests.get(  # pylint: disable=missing-timeout
                 config.dbtRunResultsHttpPath
             )
-        return (
-            json.loads(dbt_catalog.text),
-            json.loads(dbt_manifest.text),
-            json.loads(dbt_run_results.text) if dbt_run_results else None,
+
+        dbt_catalog = None
+        if config.dbtCatalogHttpPath:
+            logger.debug(
+                f"Requesting [dbtCatalogHttpPath] to: {config.dbtCatalogHttpPath}"
+            )
+            dbt_catalog = requests.get(  # pylint: disable=missing-timeout
+                config.dbtCatalogHttpPath
+            )
+        if not dbt_manifest:
+            raise DBTConfigException("Manifest file not found in file server")
+        return DbtFiles(
+            dbt_catalog=dbt_catalog.json() if dbt_catalog else None,
+            dbt_manifest=dbt_manifest.json(),
+            dbt_run_results=dbt_run_results.json() if dbt_run_results else None,
         )
+    except DBTConfigException as exc:
+        raise exc
     except Exception as exc:
         logger.debug(traceback.format_exc())
-        logger.warning(f"Error fetching dbt files from file server: {exc}")
-    return None
+        raise DBTConfigException(f"Error fetching dbt files from file server: {exc}")
 
 
 @get_dbt_details.register
@@ -140,7 +163,7 @@ def _(config: DbtCloudConfig):  # pylint: disable=too-many-locals
         expiry = 0
         auth_token = config.dbtCloudAuthToken.get_secret_value(), expiry
         client_config = ClientConfig(
-            base_url="https://cloud.getdbt.com",
+            base_url=config.dbtCloudUrl,
             api_version="api/v2",
             auth_token=lambda: auth_token,
             auth_header="Authorization",
@@ -149,32 +172,58 @@ def _(config: DbtCloudConfig):  # pylint: disable=too-many-locals
         client = REST(client_config)
         account_id = config.dbtCloudAccountId
         project_id = config.dbtCloudProjectId
+        job_id = config.dbtCloudJobId
         logger.debug(
             "Requesting [dbt_catalog], [dbt_manifest] and [dbt_run_results] data"
         )
-        params_data = {"order_by": "-finished_at", "limit": "1"}
+        params_data = {"order_by": "-finished_at", "limit": "1", "status": "10"}
         if project_id:
             params_data["project_id"] = project_id
+
+        if job_id:
+            params_data["job_definition_id"] = job_id
+
         response = client.get(f"/accounts/{account_id}/runs", data=params_data)
         runs_data = response.get("data")
         if runs_data:
             run_id = runs_data[0]["id"]
-            logger.debug("Requesting [dbt_catalog]")
-            dbt_catalog = client.get(
-                f"/accounts/{account_id}/runs/{run_id}/artifacts/{DBT_CATALOG_FILE_NAME}"
-            )
+            try:
+                logger.debug("Requesting [dbt_catalog]")
+                dbt_catalog = client.get(
+                    f"/accounts/{account_id}/runs/{run_id}/artifacts/{DBT_CATALOG_FILE_NAME}"
+                )
+            except Exception as exc:
+                logger.info(
+                    f"dbt catalog file not found, skipping the catalog file: {exc}"
+                )
+                logger.debug(traceback.format_exc())
             logger.debug("Requesting [dbt_manifest]")
             dbt_manifest = client.get(
                 f"/accounts/{account_id}/runs/{run_id}/artifacts/{DBT_MANIFEST_FILE_NAME}"
             )
-            logger.debug("Requesting [dbt_run_results]")
-            dbt_run_results = client.get(
-                f"/accounts/{account_id}/runs/{run_id}/artifacts/{DBT_RUN_RESULTS_FILE_NAME}"
-            )
+            try:
+                logger.debug("Requesting [dbt_run_results]")
+                dbt_run_results = client.get(
+                    f"/accounts/{account_id}/runs/{run_id}/artifacts/{DBT_RUN_RESULTS_FILE_NAME}"
+                )
+            except Exception as exc:
+                logger.info(
+                    f"dbt run_results file not found, skipping dbt tests: {exc}"
+                )
+                logger.debug(traceback.format_exc())
+        if not dbt_manifest:
+            raise DBTConfigException("Manifest file not found in DBT Cloud")
+
+        return DbtFiles(
+            dbt_catalog=dbt_catalog,
+            dbt_manifest=dbt_manifest,
+            dbt_run_results=dbt_run_results,
+        )
+    except DBTConfigException as exc:
+        raise exc
     except Exception as exc:
         logger.debug(traceback.format_exc())
-        logger.warning(f"Error fetching dbt files from DBT Cloud: {exc}")
-    return dbt_catalog, dbt_manifest, dbt_run_results
+        raise DBTConfigException(f"Error fetching dbt files from DBT Cloud: {exc}")
 
 
 @get_dbt_details.register
@@ -209,15 +258,18 @@ def _(config: DbtS3Config):
                 if DBT_RUN_RESULTS_FILE_NAME in bucket_object.key:
                     logger.debug(f"{DBT_RUN_RESULTS_FILE_NAME} found")
                     dbt_run_results = bucket_object.get()["Body"].read().decode()
-        return (
-            json.loads(dbt_catalog),
-            json.loads(dbt_manifest),
-            json.loads(dbt_run_results) if dbt_run_results else None,
+        if not dbt_manifest:
+            raise DBTConfigException("Manifest file not found in s3")
+        return DbtFiles(
+            dbt_catalog=json.loads(dbt_catalog) if dbt_catalog else None,
+            dbt_manifest=json.loads(dbt_manifest),
+            dbt_run_results=json.loads(dbt_run_results) if dbt_run_results else None,
         )
+    except DBTConfigException as exc:
+        raise exc
     except Exception as exc:
         logger.debug(traceback.format_exc())
-        logger.warning(f"Error fetching dbt files from s3: {exc}")
-    return dbt_catalog, dbt_manifest
+        raise DBTConfigException(f"Error fetching dbt files from s3: {exc}")
 
 
 @get_dbt_details.register
@@ -250,15 +302,18 @@ def _(config: DbtGcsConfig):
                 if DBT_RUN_RESULTS_FILE_NAME in blob.name:
                     logger.debug(f"{DBT_RUN_RESULTS_FILE_NAME} found")
                     dbt_run_results = blob.download_as_string().decode()
-        return (
-            json.loads(dbt_catalog),
-            json.loads(dbt_manifest),
-            json.loads(dbt_run_results) if dbt_run_results else None,
+        if not dbt_manifest:
+            raise DBTConfigException("Manifest file not found in gcs")
+        return DbtFiles(
+            dbt_catalog=json.loads(dbt_catalog) if dbt_catalog else None,
+            dbt_manifest=json.loads(dbt_manifest),
+            dbt_run_results=json.loads(dbt_run_results) if dbt_run_results else None,
         )
+    except DBTConfigException as exc:
+        raise exc
     except Exception as exc:
         logger.debug(traceback.format_exc())
-        logger.warning(f"Error fetching dbt files from gcs: {exc}")
-    return dbt_catalog, dbt_manifest
+        raise DBTConfigException(f"Error fetching dbt files from gcs: {exc}")
 
 
 def get_dbt_prefix_config(config) -> Tuple[Optional[str], Optional[str]]:

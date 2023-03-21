@@ -13,7 +13,8 @@
 Test Profiler behavior
 """
 import os
-from datetime import datetime, timezone
+from concurrent.futures import TimeoutError
+from datetime import datetime
 from unittest import TestCase
 from unittest.mock import patch
 from uuid import uuid4
@@ -31,6 +32,7 @@ from metadata.generated.schema.entity.data.table import (
     ColumnName,
     ColumnProfile,
     DataType,
+    Histogram,
     Table,
     TableProfile,
 )
@@ -39,12 +41,13 @@ from metadata.generated.schema.entity.services.connections.database.sqliteConnec
     SQLiteScheme,
 )
 from metadata.ingestion.source import sqa_types
-from metadata.interfaces.profiler_protocol import ProfilerInterfaceArgs
-from metadata.interfaces.sqalchemy.sqa_profiler_interface import SQAProfilerInterface
-from metadata.orm_profiler.metrics.core import add_props
-from metadata.orm_profiler.metrics.registry import Metrics
-from metadata.orm_profiler.profiler.core import MissingMetricException, Profiler
-from metadata.orm_profiler.profiler.default import DefaultProfiler
+from metadata.profiler.metrics.core import add_props
+from metadata.profiler.metrics.registry import Metrics
+from metadata.profiler.profiler.core import MissingMetricException, Profiler
+from metadata.profiler.profiler.default import DefaultProfiler
+from metadata.profiler.profiler.interface.sqlalchemy.sqa_profiler_interface import (
+    SQAProfilerInterface,
+)
 
 Base = declarative_base()
 
@@ -85,11 +88,13 @@ class ProfilerTest(TestCase):
         SQAProfilerInterface, "_convert_table_to_orm_object", return_value=User
     ):
         sqa_profiler_interface = SQAProfilerInterface(
-            profiler_interface_args=ProfilerInterfaceArgs(
-                service_connection_config=sqlite_conn,
-                table_entity=table_entity,
-                ometa_client=None,
-            )
+            sqlite_conn,
+            None,
+            table_entity,
+            None,
+            None,
+            None,
+            None,
         )
 
     @classmethod
@@ -149,11 +154,13 @@ class ProfilerTest(TestCase):
             variance=None,
             distinctCount=2.0,
             distinctProportion=1.0,
-            median=30.5,
-            timestamp=datetime.now(tz=timezone.utc).timestamp()
-            # histogram=Histogram(
-            #     boundaries=["30.0 to 30.25", "31.0 to 31.25"], frequencies=[1, 1]
-            # ),
+            median=30.0,
+            timestamp=age_profile.timestamp,
+            firstQuartile=30.0,
+            thirdQuartile=31.0,
+            interQuartileRange=1.0,
+            nonParametricSkew=2.0,
+            histogram=Histogram(boundaries=["30.00 and up"], frequencies=[2]),
         )
 
     def test_required_metrics(self):
@@ -230,7 +237,30 @@ class ProfilerTest(TestCase):
                 )
             )
 
+    def test_profiler_with_timeout(self):
+        """check timeout is properly used"""
+
+        with patch.object(
+            SQAProfilerInterface, "_convert_table_to_orm_object", return_value=User
+        ):
+            sqa_profiler_interface = SQAProfilerInterface(
+                self.sqlite_conn,
+                None,
+                self.table_entity,
+                None,
+                None,
+                None,
+                None,
+                timeout_seconds=0,
+            )
+
+        simple = DefaultProfiler(
+            profiler_interface=sqa_profiler_interface,
+        )
+
+        with pytest.raises(TimeoutError):
+            simple.compute_metrics()
+
     @classmethod
     def tearDownClass(cls) -> None:
         os.remove(cls.db_path)
-        return super().tearDownClass()

@@ -69,7 +69,6 @@ import org.openmetadata.service.jdbi3.FeedRepository;
 import org.openmetadata.service.jdbi3.FeedRepository.FilterType;
 import org.openmetadata.service.jdbi3.FeedRepository.PaginationType;
 import org.openmetadata.service.resources.Collection;
-import org.openmetadata.service.resources.feeds.FeedResource.ThreadList;
 import org.openmetadata.service.resources.feeds.MessageParser.EntityLink;
 import org.openmetadata.service.security.Authorizer;
 import org.openmetadata.service.security.policyevaluator.OperationContext;
@@ -235,9 +234,9 @@ public class FeedResource {
   @Path("/{id}")
   @Operation(
       operationId = "getThreadByID",
-      summary = "Get a thread",
+      summary = "Get a thread by Id",
       tags = "feeds",
-      description = "Get a thread by `id`.",
+      description = "Get a thread by `Id`.",
       responses = {
         @ApiResponse(
             responseCode = "200",
@@ -245,7 +244,12 @@ public class FeedResource {
             content = @Content(mediaType = "application/json", schema = @Schema(implementation = Thread.class))),
         @ApiResponse(responseCode = "404", description = "Thread for instance {id} is not found")
       })
-  public Thread get(@Context UriInfo uriInfo, @PathParam("id") String id) throws IOException {
+  public Thread get(
+      @Context UriInfo uriInfo,
+      @Parameter(description = "Id of the Thread", schema = @Schema(type = "string")) @PathParam("id") String id,
+      @Parameter(description = "Type of the Entity", schema = @Schema(type = "string")) @PathParam("entityType")
+          String entityType)
+      throws IOException {
     return addHref(uriInfo, dao.get(id));
   }
 
@@ -253,9 +257,9 @@ public class FeedResource {
   @Path("/tasks/{id}")
   @Operation(
       operationId = "getTaskByID",
-      summary = "Get a task thread by task id",
+      summary = "Get a task thread by task Id",
       tags = "feeds",
-      description = "Get a task thread by `task id`.",
+      description = "Get a task thread by `task Id`.",
       responses = {
         @ApiResponse(
             responseCode = "200",
@@ -263,7 +267,10 @@ public class FeedResource {
             content = @Content(mediaType = "application/json", schema = @Schema(implementation = Thread.class))),
         @ApiResponse(responseCode = "404", description = "Task for instance {id} is not found")
       })
-  public Thread getTask(@Context UriInfo uriInfo, @PathParam("id") String id) throws IOException {
+  public Thread getTask(
+      @Context UriInfo uriInfo,
+      @Parameter(description = "Id of the task thread", schema = @Schema(type = "string")) @PathParam("id") String id)
+      throws IOException {
     return addHref(uriInfo, dao.getTask(Integer.parseInt(id)));
   }
 
@@ -284,7 +291,7 @@ public class FeedResource {
   public Response resolveTask(
       @Context UriInfo uriInfo,
       @Context SecurityContext securityContext,
-      @PathParam("id") String id,
+      @Parameter(description = "Id of the task thread", schema = @Schema(type = "string")) @PathParam("id") String id,
       @Valid ResolveTask resolveTask)
       throws IOException {
     Thread task = dao.getTask(Integer.parseInt(id));
@@ -309,7 +316,7 @@ public class FeedResource {
   public Response closeTask(
       @Context UriInfo uriInfo,
       @Context SecurityContext securityContext,
-      @PathParam("id") String id,
+      @Parameter(description = "Id of the task thread", schema = @Schema(type = "string")) @PathParam("id") String id,
       @Valid CloseTask closeTask)
       throws IOException {
     Thread task = dao.getTask(Integer.parseInt(id));
@@ -359,7 +366,7 @@ public class FeedResource {
   @Path("/{id}")
   @Operation(
       operationId = "patchThread",
-      summary = "Update a thread by `id`.",
+      summary = "Update a thread by `Id`.",
       tags = "feeds",
       description = "Update an existing thread using JsonPatch.",
       externalDocs = @ExternalDocumentation(description = "JsonPatch RFC", url = "https://tools.ietf.org/html/rfc6902"))
@@ -367,7 +374,7 @@ public class FeedResource {
   public Response updateThread(
       @Context UriInfo uriInfo,
       @Context SecurityContext securityContext,
-      @PathParam("id") String id,
+      @Parameter(description = "Id of the thread", schema = @Schema(type = "string")) @PathParam("id") String id,
       @RequestBody(
               description = "JsonPatch with array of operations",
               content =
@@ -387,7 +394,7 @@ public class FeedResource {
   @Path("/count")
   @Operation(
       operationId = "countThreads",
-      summary = "count of threads",
+      summary = "Count of threads",
       tags = "feeds",
       description = "Get a count of threads, optionally filtered by `entityLink` for each of the entities.",
       responses = {
@@ -460,7 +467,7 @@ public class FeedResource {
   public Response addPost(
       @Context SecurityContext securityContext,
       @Context UriInfo uriInfo,
-      @PathParam("id") String id,
+      @Parameter(description = "Id of the thread", schema = @Schema(type = "string")) @PathParam("id") String id,
       @Valid CreatePost createPost)
       throws IOException {
     Post post = getPost(createPost);
@@ -472,7 +479,7 @@ public class FeedResource {
   @Path("/{threadId}/posts/{postId}")
   @Operation(
       operationId = "patchPostOfThread",
-      summary = "Update post of a thread by `id`.",
+      summary = "Update post of a thread by `Id`.",
       tags = "feeds",
       description = "Update a post of an existing thread using JsonPatch.",
       externalDocs = @ExternalDocumentation(description = "JsonPatch RFC", url = "https://tools.ietf.org/html/rfc6902"),
@@ -484,8 +491,9 @@ public class FeedResource {
   public Response patchPost(
       @Context SecurityContext securityContext,
       @Context UriInfo uriInfo,
-      @PathParam("threadId") String threadId,
-      @PathParam("postId") String postId,
+      @Parameter(description = "Id of the thread", schema = @Schema(type = "string")) @PathParam("threadId")
+          String threadId,
+      @Parameter(description = "Id of the post", schema = @Schema(type = "string")) @PathParam("postId") String postId,
       @RequestBody(
               description = "JsonPatch with array of operations",
               content =
@@ -508,7 +516,7 @@ public class FeedResource {
   @Path("/{threadId}")
   @Operation(
       operationId = "deleteThread",
-      summary = "Delete a thread",
+      summary = "Delete a thread by Id",
       tags = "feeds",
       description = "Delete an existing thread and all its relationships.",
       responses = {
@@ -576,7 +584,10 @@ public class FeedResource {
             description = "The posts of the given thread.",
             content = @Content(mediaType = "application/json", schema = @Schema(implementation = PostList.class))),
       })
-  public PostList getPosts(@Context UriInfo uriInfo, @PathParam("id") String id) throws IOException {
+  public PostList getPosts(
+      @Context UriInfo uriInfo,
+      @Parameter(description = "Id of the thread", schema = @Schema(type = "string")) @PathParam("id") String id)
+      throws IOException {
     return new PostList(dao.listPosts(id));
   }
 

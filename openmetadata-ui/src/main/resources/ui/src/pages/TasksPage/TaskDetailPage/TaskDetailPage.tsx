@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,19 +11,26 @@
  *  limitations under the License.
  */
 
-import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { Button, Card, Dropdown, Layout, Menu, Tabs } from 'antd';
+import { CheckOutlined, CloseOutlined, DownOutlined } from '@ant-design/icons';
+import { Button, Card, Dropdown, Layout, MenuProps, Space, Tabs } from 'antd';
 import { AxiosError } from 'axios';
 import classNames from 'classnames';
+import ActivityFeedEditor from 'components/ActivityFeed/ActivityFeedEditor/ActivityFeedEditor';
+import FeedPanelBody from 'components/ActivityFeed/ActivityFeedPanel/FeedPanelBody';
+import ActivityThreadPanelBody from 'components/ActivityFeed/ActivityThreadPanel/ActivityThreadPanelBody';
+import { useAuthContext } from 'components/authentication/auth-provider/AuthProvider';
+import AssigneeList from 'components/common/AssigneeList/AssigneeList';
+import ErrorPlaceHolder from 'components/common/error-with-placeholder/ErrorPlaceHolder';
+import UserPopOverCard from 'components/common/PopOverCard/UserPopOverCard';
+import ProfilePicture from 'components/common/ProfilePicture/ProfilePicture';
+import TitleBreadcrumb from 'components/common/title-breadcrumb/title-breadcrumb.component';
+import Loader from 'components/Loader/Loader';
 import { compare, Operation } from 'fast-json-patch';
 import { isEmpty, isEqual, toLower } from 'lodash';
 import { observer } from 'mobx-react';
 import React, { Fragment, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHistory, useParams } from 'react-router-dom';
-import AppState from '../../../AppState';
-import { useAuthContext } from '../../../authentication/auth-provider/AuthProvider';
 import {
   getFeedById,
   getTask,
@@ -32,16 +39,9 @@ import {
   updatePost,
   updateTask,
   updateThread,
-} from '../../../axiosAPIs/feedsAPI';
-import ActivityFeedEditor from '../../../components/ActivityFeed/ActivityFeedEditor/ActivityFeedEditor';
-import FeedPanelBody from '../../../components/ActivityFeed/ActivityFeedPanel/FeedPanelBody';
-import ActivityThreadPanelBody from '../../../components/ActivityFeed/ActivityThreadPanel/ActivityThreadPanelBody';
-import AssigneeList from '../../../components/common/AssigneeList/AssigneeList';
-import ErrorPlaceHolder from '../../../components/common/error-with-placeholder/ErrorPlaceHolder';
-import UserPopOverCard from '../../../components/common/PopOverCard/UserPopOverCard';
-import ProfilePicture from '../../../components/common/ProfilePicture/ProfilePicture';
-import TitleBreadcrumb from '../../../components/common/title-breadcrumb/title-breadcrumb.component';
-import Loader from '../../../components/Loader/Loader';
+} from 'rest/feedsAPI';
+import AppState from '../../../AppState';
+import { ReactComponent as IconEdit } from '../../../assets/svg/ic-edit.svg';
 import { FQN_SEPARATOR_CHAR } from '../../../constants/char.constants';
 import { PanelTab, TaskOperation } from '../../../constants/Feeds.constants';
 import { EntityType } from '../../../enums/entity.enum';
@@ -67,16 +67,15 @@ import {
   updateThreadData,
 } from '../../../utils/FeedUtils';
 import { getEncodedFqn } from '../../../utils/StringsUtils';
-import SVGIcons from '../../../utils/SvgUtils';
 import { getEntityLink } from '../../../utils/TableUtils';
 import {
   fetchEntityDetail,
   fetchOptions,
   getBreadCrumbList,
   getColumnObject,
+  getTaskActionList,
   isDescriptionTask,
   isTagsTask,
-  TASK_ACTION_LIST,
 } from '../../../utils/TasksUtils';
 import { getDayTimeByTimeStamp } from '../../../utils/TimeUtils';
 import { showErrorToast, showSuccessToast } from '../../../utils/ToastUtils';
@@ -105,6 +104,8 @@ const TaskDetailPage = () => {
   const { isAuthDisabled } = useAuthContext();
 
   const { taskId } = useParams<{ [key: string]: string }>();
+
+  const TASK_ACTION_LIST = useMemo(() => getTaskActionList(), []);
 
   const [taskDetail, setTaskDetail] = useState<Thread>({} as Thread);
   const [taskFeedDetail, setTaskFeedDetail] = useState<Thread>({} as Thread);
@@ -310,10 +311,13 @@ const TaskDetailPage = () => {
   };
 
   const onTaskResolve = () => {
-    const updateTaskData = (data: Record<string, string>) => {
-      updateTask(TaskOperation.RESOLVE, taskDetail.task?.id, data)
+    const updateTaskData = (data: TaskDetails) => {
+      if (!taskDetail.task?.id) {
+        return;
+      }
+      updateTask(TaskOperation.RESOLVE, taskDetail.task?.id + '', data)
         .then(() => {
-          showSuccessToast(t('label.task-resolved-successfully'));
+          showSuccessToast(t('server.task-resolved-successfully'));
           history.push(
             getEntityLink(
               entityType ?? '',
@@ -327,28 +331,28 @@ const TaskDetailPage = () => {
     if (isTaskTags) {
       if (!isEmpty(tagsSuggestion)) {
         const data = { newValue: JSON.stringify(tagsSuggestion || '[]') };
-        updateTaskData(data);
+        updateTaskData(data as TaskDetails);
       } else {
-        showErrorToast(t('label.please-add-tags'));
+        showErrorToast(t('server.please-add-tags'));
       }
     } else {
       if (suggestion) {
         const data = { newValue: suggestion };
-        updateTaskData(data);
+        updateTaskData(data as TaskDetails);
       } else {
-        showErrorToast(t('label.please-add-description'));
+        showErrorToast(t('server.please-add-description'));
       }
     }
   };
 
   const onTaskReject = () => {
-    if (comment) {
+    if (comment && taskDetail.task?.id) {
       setIsLoadingOnSave(true);
-      updateTask(TaskOperation.REJECT, taskDetail.task?.id, {
+      updateTask(TaskOperation.REJECT, taskDetail.task?.id + '', {
         comment,
-      })
+      } as unknown as TaskDetails)
         .then(() => {
-          showSuccessToast(t('label.task-closed-successfully'));
+          showSuccessToast(t('server.task-closed-successfully'));
           setModalVisible(false);
           history.push(
             getEntityLink(
@@ -360,7 +364,7 @@ const TaskDetailPage = () => {
         .catch((err: AxiosError) => showErrorToast(err))
         .finally(() => setIsLoadingOnSave(false));
     } else {
-      showErrorToast(t('label.task-closed-without-comment'));
+      showErrorToast(t('server.task-closed-without-comment'));
     }
   };
 
@@ -491,6 +495,9 @@ const TaskDetailPage = () => {
     setSuggestion(value);
   };
 
+  const handleMenuItemClick: MenuProps['onClick'] = (info) =>
+    onTaskActionChange(info.key);
+
   useEffect(() => {
     fetchTaskDetail();
   }, [taskId]);
@@ -524,10 +531,13 @@ const TaskDetailPage = () => {
             <Fragment>
               <Content style={{ ...contentStyles, overflowY: 'auto' }}>
                 <TitleBreadcrumb
+                  className="m-t-lg m-b-xs"
                   titleLinks={[
                     ...getBreadCrumbList(entityData, entityType as EntityType),
                     {
-                      name: `Task #${taskDetail.task?.id}`,
+                      name: t('label.task-title', {
+                        title: taskDetail.task?.id,
+                      }),
                       activeTitle: true,
                       url: '',
                     },
@@ -541,14 +551,16 @@ const TaskDetailPage = () => {
                   <p
                     className="tw-text-base tw-font-medium tw-mb-4"
                     data-testid="task-title">
-                    {`Task #${taskId}`} {taskDetail.message}
+                    {t('label.task-title', {
+                      title: `${taskId} ${taskDetail.message}`,
+                    })}
                   </p>
                   <div className="tw-flex tw-mb-4" data-testid="task-metadata">
                     <TaskStatus
                       status={taskDetail.task?.status as ThreadTaskStatus}
                     />
                     <span className="tw-mx-1.5 tw-inline-block tw-text-gray-400">
-                      |
+                      {t('label.pipe-symbol')}
                     </span>
                     <span className="tw-flex">
                       <UserPopOverCard userName={taskDetail.createdBy || ''}>
@@ -565,7 +577,7 @@ const TaskDetailPage = () => {
                         </span>
                       </UserPopOverCard>
                       <span className="tw-ml-1">
-                        {t('label.created-this-task')}
+                        {t('message.created-this-task-lowercase')}
                       </span>
                       <span className="tw-ml-1">
                         {toLower(
@@ -581,7 +593,7 @@ const TaskDetailPage = () => {
                       className={classNames('tw-text-grey-muted', {
                         'tw-self-center tw-mr-2': editAssignee,
                       })}>
-                      {t('label.assignees')}:
+                      {`${t('label.assignee-plural')}:`}
                     </span>
                     {editAssignee ? (
                       <Fragment>
@@ -593,25 +605,19 @@ const TaskDetailPage = () => {
                         />
                         <Button
                           className="tw-mx-1 tw-self-center ant-btn-primary-custom"
+                          icon={<CloseOutlined />}
                           size="small"
                           type="primary"
-                          onClick={() => setEditAssignee(false)}>
-                          <FontAwesomeIcon
-                            className="tw-w-3.5 tw-h-3.5"
-                            icon="times"
-                          />
-                        </Button>
+                          onClick={() => setEditAssignee(false)}
+                        />
                         <Button
                           className="tw-mx-1 tw-self-center ant-btn-primary-custom"
                           disabled={!assignees.length}
+                          icon={<CheckOutlined />}
                           size="small"
                           type="primary"
-                          onClick={onTaskUpdate}>
-                          <FontAwesomeIcon
-                            className="tw-w-3.5 tw-h-3.5"
-                            icon="check"
-                          />
-                        </Button>
+                          onClick={onTaskUpdate}
+                        />
                       </Fragment>
                     ) : (
                       <Fragment>
@@ -620,17 +626,14 @@ const TaskDetailPage = () => {
                           className="tw-ml-0.5 tw-align-middle tw-inline-flex tw-flex-wrap"
                         />
                         {(hasEditAccess() || isCreator) && !isTaskClosed && (
-                          <button
-                            className="focus:tw-outline-none tw-self-baseline tw-flex-none"
+                          <Button
+                            className="p-0"
                             data-testid="edit-suggestion"
-                            onClick={() => setEditAssignee(true)}>
-                            <SVGIcons
-                              alt="edit"
-                              icon="icon-edit"
-                              title="Edit"
-                              width="14px"
-                            />
-                          </button>
+                            icon={<IconEdit height={14} width={14} />}
+                            size="small"
+                            type="text"
+                            onClick={() => setEditAssignee(true)}
+                          />
                         )}
                       </Fragment>
                     )}
@@ -665,9 +668,10 @@ const TaskDetailPage = () => {
                     />
                   )}
 
-                  <div
-                    className="tw-flex tw-justify-end"
-                    data-testid="task-cta-buttons">
+                  <Space
+                    className="m-t-xss"
+                    data-testid="task-cta-buttons"
+                    size="small">
                     {(hasEditAccess() || isCreator) && !isTaskClosed && (
                       <Button
                         className="ant-btn-link-custom"
@@ -683,20 +687,13 @@ const TaskDetailPage = () => {
                           <Dropdown.Button
                             className="ant-btn-primary-dropdown"
                             data-testid="complete-task"
-                            icon={
-                              <FontAwesomeIcon
-                                className="tw-text-sm"
-                                icon={faChevronDown}
-                              />
-                            }
-                            overlay={
-                              <Menu
-                                selectable
-                                items={TASK_ACTION_LIST}
-                                selectedKeys={[taskAction.key]}
-                                onClick={(info) => onTaskActionChange(info.key)}
-                              />
-                            }
+                            icon={<DownOutlined />}
+                            menu={{
+                              items: TASK_ACTION_LIST,
+                              selectable: true,
+                              selectedKeys: [taskAction.key],
+                              onClick: handleMenuItemClick,
+                            }}
                             trigger={['click']}
                             type="primary"
                             onClick={onTaskResolve}>
@@ -708,19 +705,21 @@ const TaskDetailPage = () => {
                             disabled={!suggestion}
                             type="primary"
                             onClick={onTaskResolve}>
-                            {t('label.add-description')}
+                            {t('label.add-entity', {
+                              entity: t('label.description'),
+                            })}
                           </Button>
                         )}
                       </Fragment>
                     )}
-                  </div>
+                  </Space>
 
                   {isTaskClosed && <ClosedTask task={taskDetail.task} />}
                 </Card>
                 <CommentModal
                   comment={comment}
                   isLoading={isLoadingOnSave}
-                  isVisible={modalVisible}
+                  open={modalVisible}
                   setComment={setComment}
                   taskDetail={taskDetail}
                   onClose={onCommentModalClose}
@@ -734,7 +733,7 @@ const TaskDetailPage = () => {
                 theme="light"
                 width={600}>
                 <Tabs className="ant-tabs-custom-line" onChange={onTabChange}>
-                  <TabPane key={PanelTab.TASKS} tab="Task">
+                  <TabPane key={PanelTab.TASKS} tab={t('label.task')}>
                     {!isEmpty(taskFeedDetail) ? (
                       <div id="task-feed">
                         <FeedPanelBody
@@ -751,7 +750,9 @@ const TaskDetailPage = () => {
                     ) : null}
                   </TabPane>
 
-                  <TabPane key={PanelTab.CONVERSATIONS} tab="Conversations">
+                  <TabPane
+                    key={PanelTab.CONVERSATIONS}
+                    tab={t('label.conversation-plural')}>
                     {!isEmpty(taskFeedDetail) ? (
                       <ActivityThreadPanelBody
                         className="tw-p-0"

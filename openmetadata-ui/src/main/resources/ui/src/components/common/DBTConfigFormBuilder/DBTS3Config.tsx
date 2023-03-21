@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,13 +11,14 @@
  *  limitations under the License.
  */
 
-import { Input } from 'antd';
+import { Button, Input } from 'antd';
+import { t } from 'i18next';
 import React, { Fragment, FunctionComponent, useState } from 'react';
 import {
   DBTBucketDetails,
   DbtConfig,
   SCredentials,
-} from '../../../generated/metadataIngestion/databaseServiceMetadataPipeline';
+} from '../../../generated/metadataIngestion/dbtPipeline';
 import {
   errorMsg,
   getSeparator,
@@ -27,25 +28,28 @@ import {
   checkDbtS3CredsConfigRules,
   validateDbtS3Config,
 } from '../../../utils/DBTConfigFormUtil';
-import { Button } from '../../buttons/Button/Button';
 import { Field } from '../../Field/Field';
+import DBTCommonFields from './DBTCommonFields.component';
 import {
   DbtConfigS3GCS,
   DBTFormCommonProps,
   ErrorDbtS3,
 } from './DBTConfigForm.interface';
-import SwitchField from './SwitchField.component';
 
 interface Props extends DBTFormCommonProps, DbtConfigS3GCS {
   handleSecurityConfigChange: (value: SCredentials) => void;
   handlePrefixConfigChange: (value: DBTBucketDetails) => void;
   handleUpdateDescriptions: (value: boolean) => void;
+  handleUpdateDBTClassification: (value: string) => void;
+  enableDebugLog: boolean;
+  handleEnableDebugLogCheck: (value: boolean) => void;
 }
 
 export const DBTS3Config: FunctionComponent<Props> = ({
   dbtSecurityConfig,
   dbtPrefixConfig,
   dbtUpdateDescriptions = false,
+  dbtClassificationName,
   okText,
   cancelText,
   onCancel,
@@ -53,6 +57,9 @@ export const DBTS3Config: FunctionComponent<Props> = ({
   handleSecurityConfigChange,
   handlePrefixConfigChange,
   handleUpdateDescriptions,
+  handleUpdateDBTClassification,
+  enableDebugLog,
+  handleEnableDebugLogCheck,
 }: Props) => {
   const updateS3Creds = (key: keyof SCredentials, val: string) => {
     const updatedCreds: SCredentials = {
@@ -89,6 +96,7 @@ export const DBTS3Config: FunctionComponent<Props> = ({
       dbtSecurityConfig,
       dbtPrefixConfig,
       dbtUpdateDescriptions,
+      dbtClassificationName,
     };
     if (validate(submitData)) {
       onSubmit(submitData);
@@ -101,10 +109,10 @@ export const DBTS3Config: FunctionComponent<Props> = ({
         <label
           className="tw-block tw-form-label tw-mb-1"
           htmlFor="aws-access-key-id">
-          AWS Access Key ID
+          {t('label.aws-access-key-id')}
         </label>
         <p className="tw-text-grey-muted tw-mt-1 tw-mb-2 tw-text-xs">
-          AWS Access Key ID.
+          {`${t('label.aws-access-key-id')}.`}
         </p>
         <Input.Password
           className="tw-form-inputs tw-form-inputs-padding"
@@ -119,10 +127,10 @@ export const DBTS3Config: FunctionComponent<Props> = ({
         <label
           className="tw-block tw-form-label tw-mb-1"
           htmlFor="aws-secret-access-key-id">
-          AWS Secret Access Key
+          {t('label.aws-secret-access-key')}
         </label>
         <p className="tw-text-grey-muted tw-mt-1 tw-mb-2 tw-text-xs">
-          AWS Secret Access Key.
+          {`${t('label.aws-secret-access-key')}.`}
         </p>
 
         <Input.Password
@@ -136,10 +144,10 @@ export const DBTS3Config: FunctionComponent<Props> = ({
       </Field>
       <Field>
         <label className="tw-block tw-form-label tw-mb-1" htmlFor="aws-region">
-          {requiredField('AWS Region')}
+          {requiredField(t('label.aws-region'))}
         </label>
         <p className="tw-text-grey-muted tw-mt-1 tw-mb-2 tw-text-xs">
-          AWS Region.
+          {`${t('label.aws-region')}.`}
         </p>
         <input
           className="tw-form-inputs tw-form-inputs-padding"
@@ -156,10 +164,10 @@ export const DBTS3Config: FunctionComponent<Props> = ({
         <label
           className="tw-block tw-form-label tw-mb-1"
           htmlFor="aws-session-token">
-          AWS Session Token
+          {t('label.aws-session-token')}
         </label>
         <p className="tw-text-grey-muted tw-mt-1 tw-mb-2 tw-text-xs">
-          AWS Session Token.
+          {`${t('label.aws-session-token')}.`}
         </p>
         <Input.Password
           className="tw-form-inputs tw-form-inputs-padding"
@@ -175,10 +183,10 @@ export const DBTS3Config: FunctionComponent<Props> = ({
         <label
           className="tw-block tw-form-label tw-mb-1"
           htmlFor="endpoint-url">
-          Endpoint URL
+          {t('label.endpoint-url')}
         </label>
         <p className="tw-text-grey-muted tw-mt-1 tw-mb-2 tw-text-xs">
-          EndPoint URL for the AWS.
+          {`${t('label.endpoint-url-for-aws')}.`}
         </p>
         <input
           className="tw-form-inputs tw-form-inputs-padding"
@@ -195,10 +203,10 @@ export const DBTS3Config: FunctionComponent<Props> = ({
         <label
           className="tw-block tw-form-label tw-mb-1"
           htmlFor="dbt-bucket-name">
-          DBT Bucket Name
+          {t('label.dbt-bucket-name')}
         </label>
         <p className="tw-text-grey-muted tw-mt-1 tw-mb-2 tw-text-xs">
-          Name of the bucket where the dbt files are stored.
+          {t('message.name-of-the-bucket-dbt-files-stored')}
         </p>
         <input
           className="tw-form-inputs tw-form-inputs-padding"
@@ -214,10 +222,10 @@ export const DBTS3Config: FunctionComponent<Props> = ({
         <label
           className="tw-block tw-form-label tw-mb-1"
           htmlFor="dbt-object-prefix">
-          DBT Object Prefix
+          {t('label.dbt-object-prefix')}
         </label>
         <p className="tw-text-grey-muted tw-mt-1 tw-mb-2 tw-text-xs">
-          Path of the folder where the dbt files are stored.
+          {t('message.path-of-the-dbt-files-stored')}
         </p>
         <input
           className="tw-form-inputs tw-form-inputs-padding"
@@ -231,32 +239,33 @@ export const DBTS3Config: FunctionComponent<Props> = ({
       </Field>
       {getSeparator('')}
 
-      <SwitchField
+      <DBTCommonFields
+        dbtClassificationName={dbtClassificationName}
         dbtUpdateDescriptions={dbtUpdateDescriptions}
+        descriptionId="s3-update-description"
+        enableDebugLog={enableDebugLog}
+        handleEnableDebugLogCheck={handleEnableDebugLogCheck}
+        handleUpdateDBTClassification={handleUpdateDBTClassification}
         handleUpdateDescriptions={handleUpdateDescriptions}
-        id="s3-update-description"
       />
 
       {getSeparator('')}
 
-      <Field className="tw-flex tw-justify-end">
+      <Field className="d-flex justify-end">
         <Button
-          className="tw-mr-2"
+          className="m-r-xs"
           data-testid="back-button"
-          size="regular"
-          theme="primary"
-          variant="text"
+          type="link"
           onClick={onCancel}>
-          <span>{cancelText}</span>
+          {cancelText}
         </Button>
 
         <Button
+          className="font-medium p-x-md p-y-xxs h-auto rounded-6"
           data-testid="submit-btn"
-          size="regular"
-          theme="primary"
-          variant="contained"
+          type="primary"
           onClick={handleSubmit}>
-          <span>{okText}</span>
+          {okText}
         </Button>
       </Field>
     </Fragment>

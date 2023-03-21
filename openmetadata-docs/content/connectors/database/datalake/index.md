@@ -4,12 +4,29 @@ slug: /connectors/database/datalake
 ---
 
 # Datalake
+<Table>
+
+| Stage | Metadata |Query Usage | Data Profiler | Data Quality | Lineage | DBT | Supported Versions |
+|:------:|:------:|:-----------:|:-------------:|:------------:|:-------:|:---:|:------------------:|
+|  PROD  |   ✅   |      ❌      |       ✅       |       ✅      |    ❌    |  ❌  |  --  |
+
+</Table>
+
+<Table>
+
+| Lineage | Table-level | Column-level |
+|:------:|:-----------:|:-------------:|
+| ❌ | ❌ | ❌ |
+
+</Table>
 
 In this section, we provide guides and references to use the Datalake connector.
 
 Configure and schedule Datalake metadata and profiler workflows from the OpenMetadata UI:
 - [Requirements](#requirements)
 - [Metadata Ingestion](#metadata-ingestion)
+- [Data Profiler](#data-profiler)
+- [Data Quality](#data-quality)
 
 If you don't want to use the OpenMetadata Ingestion container to configure the workflows via the UI, then you can check
 the following docs to connect using Airflow SDK or with the CLI.
@@ -258,6 +275,28 @@ We support two ways of authenticating to GCS:
 
 </Collapse>
 
+<Collapse title="Datalake using Azure">
+
+<Image src="/images/openmetadata/connectors/datalake/service-connection-using-azure.png" alt="service-connection-using-gcs"/>
+
+- **Azure Credentials**
+
+  - **Client ID** : Client ID of the data storage account
+  - **Client Secret** : Client Secret of the account
+  - **Tenant ID** : Tenant ID under which the data storage account falls
+  - **Account Name** : Account Name of the data Storage
+
+- **Required Roles**
+
+  Please make sure the following roles associated with the data storage account.
+   - `Storage Blob Data Contributor`
+   - `Storage Queue Data Contributor`
+
+The current approach for authentication is based on `app registration`, reach out to us on [slack](https://slack.open-metadata.org/) if you find the need for another auth system
+
+</Collapse>
+
+
 ### 6. Configure Metadata Ingestion
 
 In this step we will configure the metadata ingestion pipeline,
@@ -286,6 +325,7 @@ caption="Configure Metadata Ingestion Page"
 - **Enable Debug Log (toggle)**: Set the Enable Debug Log toggle to set the default log level to debug, these logs can be viewed later in Airflow.
 - **Mark Deleted Tables (toggle)**: Set the Mark Deleted Tables toggle to flag tables as soft-deleted if they are not present anymore in the source system.
 - **Mark Deleted Tables from Filter Only (toggle)**: Set the Mark Deleted Tables from Filter Only toggle to flag tables as soft-deleted if they are not present anymore within the filtered schema or database only. This flag is useful when you have more than one ingestion pipelines. For example if you have a schema
+- **Auto Tag PII(toggle)**: Auto PII tagging checks for column name to mark PII Sensitive/NonSensitive tag
 
 ### 7. Schedule the Ingestion and Deploy
 
@@ -334,3 +374,22 @@ caption="Edit and Deploy the Ingestion Pipeline"
 />
 
 From the Connection tab, you can also Edit the Service if needed.
+
+
+## Data Profiler
+
+<Tile
+icon="schema"
+title="Profiler Workflow"
+text="Learn more about how to configure the Data Profiler from the UI."
+link="/connectors/ingestion/workflows/profiler"
+/>
+
+## Data Quality
+
+<Tile
+icon="air"
+title="Data Quality Workflow"
+text="Learn more about how to configure the Data Quality tests from the UI."
+link="/connectors/ingestion/workflows/data-quality"
+/>

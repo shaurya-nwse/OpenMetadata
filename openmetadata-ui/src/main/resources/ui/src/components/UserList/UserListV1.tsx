@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -14,29 +14,29 @@
 import { Button, Col, Modal, Row, Space, Switch, Table, Tooltip } from 'antd';
 import { ColumnsType } from 'antd/lib/table';
 import { AxiosError } from 'axios';
+import { ERROR_PLACEHOLDER_TYPE } from 'enums/common.enum';
 import { isEmpty, isUndefined } from 'lodash';
 import React, { FC, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHistory } from 'react-router-dom';
-import { updateUser } from '../../axiosAPIs/userAPI';
+import { updateUser } from 'rest/userAPI';
+import { getEntityName } from 'utils/EntityUtils';
 import { PAGE_SIZE_MEDIUM, ROUTES } from '../../constants/constants';
 import { ADMIN_ONLY_ACTION } from '../../constants/HelperTextUtil';
+import { PAGE_HEADERS } from '../../constants/PageHeaders.constant';
 import { CreateUser } from '../../generated/api/teams/createUser';
 import { User } from '../../generated/entity/teams/user';
 import { Paging } from '../../generated/type/paging';
 import { useAuth } from '../../hooks/authHooks';
-import jsonData from '../../jsons/en';
-import {
-  commonUserDetailColumns,
-  getEntityName,
-} from '../../utils/CommonUtils';
 import SVGIcons, { Icons } from '../../utils/SvgUtils';
 import { showErrorToast, showSuccessToast } from '../../utils/ToastUtils';
 import DeleteWidgetModal from '../common/DeleteWidget/DeleteWidgetModal';
 import ErrorPlaceHolder from '../common/error-with-placeholder/ErrorPlaceHolder';
 import NextPrevious from '../common/next-previous/NextPrevious';
 import Searchbar from '../common/searchbar/Searchbar';
+import PageHeader from '../header/PageHeader.component';
 import Loader from '../Loader/Loader';
+import { commonUserDetailColumns } from '../Users/Users.util';
 import './usersList.less';
 
 interface UserListV1Props {
@@ -50,6 +50,7 @@ interface UserListV1Props {
   onShowDeletedUserChange: (value: boolean) => void;
   onSearch: (text: string) => void;
   afterDeleteAction: () => void;
+  isAdminPage: boolean | undefined;
 }
 
 const UserListV1: FC<UserListV1Props> = ({
@@ -63,6 +64,7 @@ const UserListV1: FC<UserListV1Props> = ({
   onShowDeletedUserChange,
   onPagingChange,
   afterDeleteAction,
+  isAdminPage,
 }) => {
   const { isAdminUser } = useAuth();
   const { t } = useTranslation();
@@ -98,16 +100,16 @@ const UserListV1: FC<UserListV1Props> = ({
       if (data) {
         afterDeleteAction();
         showSuccessToast(
-          jsonData['api-success-messages']['user-restored-success']
+          t('message.entity-restored-success', { entity: t('label.user') })
         );
         setShowReactiveModal(false);
       } else {
-        throw jsonData['api-error-messages']['update-user-error'];
+        throw t('server.entity-updating-error', { entity: t('label.user') });
       }
     } catch (error) {
       showErrorToast(
         error as AxiosError,
-        jsonData['api-error-messages']['update-user-error']
+        t('server.entity-updating-error', { entity: t('label.user') })
       );
     } finally {
       setIsLoading(false);
@@ -117,9 +119,9 @@ const UserListV1: FC<UserListV1Props> = ({
 
   const columns: ColumnsType<User> = useMemo(() => {
     return [
-      ...commonUserDetailColumns,
+      ...commonUserDetailColumns(),
       {
-        title: t('label.actions'),
+        title: t('label.action-plural'),
         dataIndex: 'actions',
         key: 'actions',
         width: 90,
@@ -178,8 +180,8 @@ const UserListV1: FC<UserListV1Props> = ({
   }, [showRestore]);
 
   const fetchErrorPlaceHolder = useMemo(
-    () => (type: string) => {
-      return (
+    () => () =>
+      (
         <Row>
           <Col className="w-full tw-flex tw-justify-end">
             <span>
@@ -188,7 +190,11 @@ const UserListV1: FC<UserListV1Props> = ({
                 size="small"
                 onClick={onShowDeletedUserChange}
               />
-              <span className="tw-ml-2">{t('label.deleted-users')}</span>
+              <span className="tw-ml-2">
+                {t('label.deleted-entity', {
+                  entity: t('label.user-plural'),
+                })}
+              </span>
             </span>
           </Col>
           <Col span={24}>
@@ -200,54 +206,71 @@ const UserListV1: FC<UserListV1Props> = ({
                   disabled={!isAdminUser}
                   type="primary"
                   onClick={handleAddNewUser}>
-                  {t('label.add-user')}
+                  {t('label.add-entity', { entity: t('label.user') })}
                 </Button>
               }
               heading="User"
-              type={type}
+              type={ERROR_PLACEHOLDER_TYPE.ADD}
             />
           </Col>
         </Row>
-      );
-    },
+      ),
     []
   );
 
   if (isEmpty(data) && !showDeletedUser && !isDataLoading && !searchTerm) {
-    return fetchErrorPlaceHolder('ADD_DATA');
+    return fetchErrorPlaceHolder();
   }
 
   return (
-    <Row className="user-listing" gutter={[16, 16]}>
-      <Col span={8}>
-        <Searchbar
-          removeMargin
-          placeholder="Search for user..."
-          searchValue={searchTerm}
-          typingInterval={500}
-          onSearch={onSearch}
+    <Row
+      className="user-listing"
+      data-testid="user-list-v1-component"
+      gutter={[16, 16]}>
+      <Col span={12}>
+        <PageHeader
+          data={isAdminPage ? PAGE_HEADERS.ADMIN : PAGE_HEADERS.USERS}
         />
       </Col>
-      <Col span={16}>
+      <Col span={12}>
         <Space align="center" className="tw-w-full tw-justify-end" size={16}>
           <span>
             <Switch
               checked={showDeletedUser}
               onClick={onShowDeletedUserChange}
             />
-            <span className="tw-ml-2">{t('label.deleted-users')}</span>
+            <span className="tw-ml-2">
+              {t('label.deleted-entity', {
+                entity: t('label.user-plural'),
+              })}
+            </span>
           </span>
           <Tooltip
-            title={isAdminUser ? t('label.add-user') : ADMIN_ONLY_ACTION}>
+            title={
+              isAdminUser
+                ? t('label.add-entity', { entity: t('label.user') })
+                : t('message.admin-only-action')
+            }>
             <Button
               data-testid="add-user"
               disabled={!isAdminUser}
               type="primary"
               onClick={handleAddNewUser}>
-              {t('label.add-user')}
+              {t('label.add-entity', { entity: t('label.user') })}
             </Button>
           </Tooltip>
         </Space>
+      </Col>
+      <Col span={8}>
+        <Searchbar
+          removeMargin
+          placeholder={`${t('label.search-for-type', {
+            type: t('label.user'),
+          })}...`}
+          searchValue={searchTerm}
+          typingInterval={500}
+          onSearch={onSearch}
+        />
       </Col>
 
       <Col span={24}>
@@ -255,12 +278,14 @@ const UserListV1: FC<UserListV1Props> = ({
           bordered
           className="user-list-table"
           columns={columns}
+          data-testid="user-list-table"
           dataSource={data}
           loading={{
             spinning: isDataLoading,
             indicator: <Loader size="small" />,
           }}
           pagination={false}
+          rowKey="id"
           size="small"
         />
       </Col>
@@ -285,15 +310,19 @@ const UserListV1: FC<UserListV1Props> = ({
         closable={false}
         confirmLoading={isLoading}
         okText={t('label.restore')}
-        title={t('label.restore-user')}
-        visible={showReactiveModal}
+        open={showReactiveModal}
+        title={t('label.restore-entity', {
+          entity: t('label.user'),
+        })}
         onCancel={() => {
           setShowReactiveModal(false);
           setSelectedUser(undefined);
         }}
         onOk={handleReactiveUser}>
         <p>
-          {t('label.want-to-restore')} {getEntityName(selectedUser)}?
+          {t('message.are-you-want-to-restore', {
+            entity: getEntityName(selectedUser),
+          })}
         </p>
       </Modal>
 

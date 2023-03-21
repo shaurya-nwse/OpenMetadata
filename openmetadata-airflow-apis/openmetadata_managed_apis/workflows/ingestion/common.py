@@ -32,14 +32,13 @@ from metadata.generated.schema.entity.services.pipelineService import PipelineSe
 from metadata.generated.schema.tests.testSuite import TestSuite
 from metadata.ingestion.models.encoders import show_secrets_encoder
 from metadata.ingestion.ometa.ometa_api import OpenMetadata
-from metadata.utils.logger import set_loggers_level
 
 try:
     from airflow.operators.python import PythonOperator
 except ModuleNotFoundError:
     from airflow.operators.python_operator import PythonOperator
 
-from openmetadata_managed_apis.utils.logger import workflow_logger
+from openmetadata_managed_apis.utils.logger import set_operator_logger, workflow_logger
 from openmetadata_managed_apis.utils.parser import (
     parse_service_connection,
     parse_validation_err,
@@ -69,11 +68,27 @@ from metadata.ingestion.ometa.utils import model_str
 
 logger = workflow_logger()
 
+# logging.getLogger("airflow.task.operators").setLevel(logging.WARNING)
+
 
 class InvalidServiceException(Exception):
     """
+    The service type we received is not supported
+    """
+
+
+class GetServiceException(Exception):
+    """
     Exception to be thrown when couldn't fetch the service from server
     """
+
+    def __init__(self, service_type: str, service_name: str):
+        self.message = (
+            f"Could not get service from type {service_type}. This means that the"
+            " OpenMetadata client running in the Airflow host had issues getting"
+            f" the service {service_name}. Validate your ingestion-bot authentication."
+        )
+        super().__init__(self.message)
 
 
 class ClientInitializationError(Exception):
@@ -100,7 +115,12 @@ def build_source(ingestion_pipeline: IngestionPipeline) -> WorkflowSource:
     try:
         metadata = OpenMetadata(config=ingestion_pipeline.openMetadataServerConnection)
     except Exception as exc:
-        raise ClientInitializationError(f"Failed to initialize the client: {exc}")
+        raise ClientInitializationError(
+            f"Failed to initialize the OpenMetadata client due to: {exc}."
+            " Make sure that the Airflow host can reach the OpenMetadata"
+            f" server running at {ingestion_pipeline.openMetadataServerConnection.hostPort}"
+            " and that the client and server are in the same version."
+        )
 
     service_type = ingestion_pipeline.service.type
 
@@ -109,9 +129,8 @@ def build_source(ingestion_pipeline: IngestionPipeline) -> WorkflowSource:
             entity=TestSuite, fqn=ingestion_pipeline.service.name
         )  # check we are able to access OM server
         if not service:
-            raise InvalidServiceException(
-                f"Could not get service from type {service_type}"
-            )
+            raise GetServiceException(service_type, ingestion_pipeline.service.name)
+
         return WorkflowSource(
             type=service_type,
             serviceName=ingestion_pipeline.service.name,
@@ -177,7 +196,7 @@ def build_source(ingestion_pipeline: IngestionPipeline) -> WorkflowSource:
         )
 
     if not service:
-        raise InvalidServiceException(f"Could not get service from type {service_type}")
+        raise GetServiceException(service_type, ingestion_pipeline.service.name)
 
     return WorkflowSource(
         type=service.serviceType.value.lower(),
@@ -196,7 +215,9 @@ def metadata_ingestion_workflow(workflow_config: OpenMetadataWorkflowConfig):
 
     This is the callable used to create the PythonOperator
     """
-    set_loggers_level(workflow_config.workflowConfig.loggerLevel.value)
+
+    set_operator_logger(workflow_config)
+
     config = json.loads(workflow_config.json(encoder=show_secrets_encoder))
     workflow = Workflow.create(config)
 

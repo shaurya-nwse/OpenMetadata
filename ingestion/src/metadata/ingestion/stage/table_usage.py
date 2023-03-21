@@ -17,9 +17,10 @@ import json
 import os
 import shutil
 import traceback
+from pathlib import Path
 
 from metadata.config.common import ConfigModel
-from metadata.generated.schema.entity.data.table import SqlQuery
+from metadata.generated.schema.api.data.createQuery import CreateQueryRequest
 from metadata.generated.schema.entity.services.connections.metadata.openMetadataConnection import (
     OpenMetadataConnection,
 )
@@ -61,18 +62,26 @@ class TableUsageStage(Stage[QueryParserData]):
         self.status = StageStatus()
         self.table_usage = {}
         self.table_queries = {}
-        isdir = os.path.isdir(self.config.filename)
-        if not isdir:
-            os.mkdir(self.config.filename)
-        else:
-            shutil.rmtree(self.config.filename)
-            os.mkdir(self.config.filename)
+
+        self.init_location()
+
         self.wrote_something = False
 
     @classmethod
     def create(cls, config_dict: dict, metadata_config: OpenMetadataConnection):
         config = TableStageConfig.parse_obj(config_dict)
         return cls(config, metadata_config)
+
+    def init_location(self) -> None:
+        """
+        Prepare the usage location
+        """
+        location = Path(self.config.filename)
+        if location.is_dir():
+            logger.info("Location exists, cleaning it up")
+            shutil.rmtree(self.config.filename)
+        logger.info(f"Creating the directory to store staging data in {location}")
+        location.mkdir(parents=True, exist_ok=True)
 
     def _get_user_entity(self, username: str):
         if username:
@@ -95,22 +104,27 @@ class TableUsageStage(Stage[QueryParserData]):
     def _add_sql_query(self, record, table):
         if self.table_queries.get((table, record.date)):
             self.table_queries[(table, record.date)].append(
-                SqlQuery(
+                CreateQueryRequest(
                     query=record.sql,
                     users=self._get_user_entity(record.userName),
                     queryDate=record.date,
+                    duration=record.duration,
                 )
             )
         else:
             self.table_queries[(table, record.date)] = [
-                SqlQuery(
+                CreateQueryRequest(
                     query=record.sql,
                     users=self._get_user_entity(record.userName),
                     queryDate=record.date,
+                    duration=record.duration,
                 )
             ]
 
     def stage_record(self, record: QueryParserData) -> None:
+        """
+        Process the parsed data and store it in a file
+        """
         if not record or not record.parsedData:
             return
         self.table_usage = {}

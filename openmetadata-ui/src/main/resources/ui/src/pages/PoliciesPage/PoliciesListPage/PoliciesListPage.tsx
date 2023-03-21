@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -13,21 +13,25 @@
 
 import { Button, Col, Row, Space, Tooltip } from 'antd';
 import { AxiosError } from 'axios';
+import ErrorPlaceHolder from 'components/common/error-with-placeholder/ErrorPlaceHolder';
+import NextPrevious from 'components/common/next-previous/NextPrevious';
+import PageHeader from 'components/header/PageHeader.component';
+import Loader from 'components/Loader/Loader';
+import { usePermissionProvider } from 'components/PermissionProvider/PermissionProvider';
+import { ResourceEntity } from 'components/PermissionProvider/PermissionProvider.interface';
+import { ERROR_PLACEHOLDER_TYPE } from 'enums/common.enum';
 import { isEmpty } from 'lodash';
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useHistory } from 'react-router-dom';
-import { getPolicies } from '../../../axiosAPIs/rolesAPIV1';
-import ErrorPlaceHolder from '../../../components/common/error-with-placeholder/ErrorPlaceHolder';
-import NextPrevious from '../../../components/common/next-previous/NextPrevious';
-import Loader from '../../../components/Loader/Loader';
-import { usePermissionProvider } from '../../../components/PermissionProvider/PermissionProvider';
-import { ResourceEntity } from '../../../components/PermissionProvider/PermissionProvider.interface';
+import { getPolicies } from 'rest/rolesAPIV1';
 import {
   INITIAL_PAGING_VALUE,
   PAGE_SIZE_MEDIUM,
   ROUTES,
 } from '../../../constants/constants';
 import { NO_PERMISSION_FOR_ACTION } from '../../../constants/HelperTextUtil';
+import { PAGE_HEADERS } from '../../../constants/PageHeaders.constant';
 import { Operation, Policy } from '../../../generated/entity/policies/policy';
 import { Paging } from '../../../generated/type/paging';
 import { checkPermission } from '../../../utils/PermissionsUtils';
@@ -36,6 +40,7 @@ import PoliciesList from './PoliciesList';
 import './PoliciesList.less';
 
 const PoliciesListPage = () => {
+  const { t } = useTranslation();
   const history = useHistory();
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -94,15 +99,15 @@ const PoliciesListPage = () => {
               disabled={!addPolicyPermission}
               type="primary"
               onClick={handleAddPolicy}>
-              Add Policy
+              {t('label.add-entity', { entity: t('label.policy') })}
             </Button>
           }
           heading="Policy"
-          type="ADD_DATA"
+          type={ERROR_PLACEHOLDER_TYPE.ADD}
         />
       );
     },
-    []
+    [addPolicyPermission]
   );
 
   return isLoading ? (
@@ -115,18 +120,23 @@ const PoliciesListPage = () => {
       data-testid="policies-list-container"
       gutter={[16, 16]}>
       <Col span={24}>
-        <Space align="center" className="tw-w-full tw-justify-end" size={16}>
+        <Space className="w-full justify-between">
+          <PageHeader data={PAGE_HEADERS.POLICIES} />
           <Tooltip
             placement="left"
             title={
-              addPolicyPermission ? 'Add Policy' : NO_PERMISSION_FOR_ACTION
+              addPolicyPermission
+                ? t('label.add-entity', {
+                    entity: t('label.policy'),
+                  })
+                : NO_PERMISSION_FOR_ACTION
             }>
             <Button
               data-testid="add-policy"
               disabled={!addPolicyPermission}
               type="primary"
               onClick={handleAddPolicy}>
-              Add Policy
+              {t('label.add-entity', { entity: t('label.policy') })}
             </Button>
           </Tooltip>
         </Space>

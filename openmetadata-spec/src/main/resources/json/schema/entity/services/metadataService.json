@@ -103,6 +103,18 @@
       "description": "User who made the update.",
       "type": "string"
     },
+    "testConnectionResult": {
+      "description": "Last test connection results for this service",
+      "$ref": "connections/testConnectionResult.json"
+    },
+    "tags": {
+      "description": "Tags for this Metadata Service.",
+      "type": "array",
+      "items": {
+        "$ref": "../../type/tagLabel.json"
+      },
+      "default": null
+    },
     "owner": {
       "description": "Owner of this database service.",
       "$ref": "../../type/entityReference.json"

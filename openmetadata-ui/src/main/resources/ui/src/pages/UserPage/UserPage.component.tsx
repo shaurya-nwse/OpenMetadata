@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -12,6 +12,11 @@
  */
 
 import { AxiosError } from 'axios';
+import { useAuthContext } from 'components/authentication/auth-provider/AuthProvider';
+import PageContainerV1 from 'components/containers/PageContainerV1';
+import Loader from 'components/Loader/Loader';
+import Users from 'components/Users/Users.component';
+import { UserDetails } from 'components/Users/Users.interface';
 import { compare, Operation } from 'fast-json-patch';
 import { isEmpty, isEqual } from 'lodash';
 import { observer } from 'mobx-react';
@@ -26,19 +31,15 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useParams } from 'react-router-dom';
+import { getFeedsWithFilter, postFeedById } from 'rest/feedsAPI';
+import { searchData } from 'rest/miscAPI';
+import { getUserByName, updateUserDetail } from 'rest/userAPI';
 import AppState from '../../AppState';
-import { useAuthContext } from '../../authentication/auth-provider/AuthProvider';
-import { getFeedsWithFilter, postFeedById } from '../../axiosAPIs/feedsAPI';
-import { searchData } from '../../axiosAPIs/miscAPI';
-import { getUserByName, updateUserDetail } from '../../axiosAPIs/userAPI';
-import PageContainerV1 from '../../components/containers/PageContainerV1';
-import Loader from '../../components/Loader/Loader';
-import Users from '../../components/Users/Users.component';
-import { UserDetails } from '../../components/Users/Users.interface';
-import { LIST_SIZE } from '../../constants/constants';
+import { PAGE_SIZE } from '../../constants/constants';
 import { myDataSearchIndex } from '../../constants/Mydata.constants';
 import { getUserCurrentTab } from '../../constants/usersprofile.constants';
 import { FeedFilter } from '../../enums/mydata.enum';
+import { UserProfileTab } from '../../enums/user.enum';
 import {
   Post,
   Thread,
@@ -54,7 +55,8 @@ import { showErrorToast } from '../../utils/ToastUtils';
 
 const UserPage = () => {
   const { t } = useTranslation();
-  const { username, tab } = useParams<{ [key: string]: string }>();
+  const { username, tab = UserProfileTab.ACTIVITY } =
+    useParams<{ [key: string]: string }>();
   const { search } = useLocation();
   const { isAdminUser } = useAuth();
   const { isAuthDisabled } = useAuthContext();
@@ -65,6 +67,8 @@ const UserPage = () => {
   const [isError, setIsError] = useState(false);
   const [entityThread, setEntityThread] = useState<Thread[]>([]);
   const [isFeedLoading, setIsFeedLoading] = useState<boolean>(false);
+  const [isUserEntitiesLoading, setIsUserEntitiesLoading] =
+    useState<boolean>(false);
   const [paging, setPaging] = useState<Paging>({} as Paging);
   const [feedFilter, setFeedFilter] = useState<FeedFilter>(
     (searchParams.get('feedFilter') as FeedFilter) ?? FeedFilter.ALL
@@ -93,7 +97,7 @@ const UserPage = () => {
 
   const fetchUserData = () => {
     setUserData({} as User);
-    getUserByName(username, 'profile,roles,teams,follows,owns')
+    getUserByName(username, 'profile,roles,teams')
       .then((res) => {
         if (res) {
           setUserData(res);
@@ -113,27 +117,30 @@ const UserPage = () => {
       .finally(() => setIsLoading(false));
   };
 
-  const fetchEntities = (
+  const fetchEntities = async (
     fetchOwnedEntities = false,
     handleEntity: Dispatch<SetStateAction<AssetsDataType>>
   ) => {
     const entity = fetchOwnedEntities ? ownedEntities : followingEntities;
-    searchData(
-      fetchOwnedEntities
-        ? `owner.id:${userData.id}`
-        : `followers:${userData.id}`,
-      entity.currPage,
-      LIST_SIZE,
-      ``,
-      '',
-      '',
-      myDataSearchIndex
-    )
-      .then((res) => {
-        const hits = res?.data?.hits?.hits as SearchEntityHits;
+    if (userData.id) {
+      setIsUserEntitiesLoading(true);
+      try {
+        const response = await searchData(
+          '',
+          entity.currPage,
+          PAGE_SIZE,
+          fetchOwnedEntities
+            ? `owner.id:${userData.id}`
+            : `followers:${userData.id}`,
+          '',
+          '',
+          myDataSearchIndex
+        );
+        const hits = response.data.hits.hits as SearchEntityHits;
+
         if (hits?.length > 0) {
           const data = formatDataResponse(hits);
-          const total = res.data.hits.total.value;
+          const total = response.data.hits.total.value;
           handleEntity({
             data,
             total,
@@ -148,15 +155,17 @@ const UserPage = () => {
             currPage: entity.currPage,
           });
         }
-      })
-      .catch((err: AxiosError) => {
+      } catch (error) {
         showErrorToast(
-          err,
+          error as AxiosError,
           t('server.entity-fetch-error', {
             entity: `${fetchOwnedEntities ? 'Owned' : 'Follwing'} Entities`,
           })
         );
-      });
+      } finally {
+        setIsUserEntitiesLoading(false);
+      }
+    }
   };
 
   const handleFollowingEntityPaginate = (page: string | number) => {
@@ -173,10 +182,10 @@ const UserPage = () => {
         className="tw-flex tw-flex-col tw-items-center tw-place-content-center tw-mt-40 tw-gap-1"
         data-testid="error">
         <p className="tw-text-base" data-testid="error-message">
-          No user available with name{' '}
+          {t('message.no-username-available')}
           <span className="tw-font-medium" data-testid="username">
             {username}
-          </span>{' '}
+          </span>
         </p>
       </div>
     );
@@ -312,6 +321,7 @@ const UserPage = () => {
           isAuthDisabled={Boolean(isAuthDisabled)}
           isFeedLoading={isFeedLoading}
           isLoggedinUser={isLoggedinUser(username)}
+          isUserEntitiesLoading={isUserEntitiesLoading}
           ownedEntities={ownedEntities}
           paging={paging}
           postFeedHandler={postFeedHandler}
@@ -338,7 +348,13 @@ const UserPage = () => {
   }, [username]);
 
   useEffect(() => {
-    if (userData.id) {
+    const isActivityTabs = [
+      UserProfileTab.ACTIVITY,
+      UserProfileTab.TASKS,
+    ].includes(tab as UserProfileTab);
+
+    // only make feed api call if active tab is either activity or tasks
+    if (userData.id && isActivityTabs) {
       const threadType =
         tab === 'tasks' ? ThreadType.Task : ThreadType.Conversation;
 
@@ -358,19 +374,16 @@ const UserPage = () => {
   }, [tab]);
 
   useEffect(() => {
-    if (!isEmpty(userData)) {
-      fetchEntities(true, setOwnedEntities);
+    if (tab === UserProfileTab.FOLLOWING) {
       fetchEntities(false, setFollowingEntities);
     }
-  }, [userData]);
+  }, [followingEntities.currPage, tab, userData]);
 
   useEffect(() => {
-    fetchEntities(false, setFollowingEntities);
-  }, [followingEntities.currPage]);
-
-  useEffect(() => {
-    fetchEntities(true, setOwnedEntities);
-  }, [ownedEntities.currPage]);
+    if (tab === UserProfileTab.MY_DATA) {
+      fetchEntities(true, setOwnedEntities);
+    }
+  }, [ownedEntities.currPage, tab, userData]);
 
   useEffect(() => {
     setCurrentLoggedInUser(AppState.getCurrentUserDetails());

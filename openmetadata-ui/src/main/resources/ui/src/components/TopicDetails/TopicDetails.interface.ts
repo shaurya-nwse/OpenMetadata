@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Collate
+ *  Copyright 2022 Collate.
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
@@ -11,24 +11,24 @@
  *  limitations under the License.
  */
 
-import {
-  EntityFieldThreadCount,
-  EntityTags,
-  LeafNodes,
-  LineagePos,
-  LoadingNodeState,
-} from 'Models';
+import { EntityTags } from 'Models';
 import { FeedFilter } from '../../enums/mydata.enum';
 import { CreateThread } from '../../generated/api/feed/createThread';
-import { Topic, TopicSampleData } from '../../generated/entity/data/topic';
+import {
+  CleanupPolicy,
+  Topic,
+  TopicSampleData,
+} from '../../generated/entity/data/topic';
 import { Thread, ThreadType } from '../../generated/entity/feed/thread';
-import { EntityLineage } from '../../generated/type/entityLineage';
 import { EntityReference } from '../../generated/type/entityReference';
 import { Paging } from '../../generated/type/paging';
+import { SchemaType } from '../../generated/type/schema';
 import { TagLabel } from '../../generated/type/tagLabel';
-import { ThreadUpdatedFunc } from '../../interface/feed.interface';
+import {
+  EntityFieldThreadCount,
+  ThreadUpdatedFunc,
+} from '../../interface/feed.interface';
 import { TitleBreadcrumbProps } from '../common/title-breadcrumb/title-breadcrumb.interface';
-import { Edge, EdgeData } from '../EntityLineage/EntityLineage.interface';
 
 export interface TopicDetailsProps {
   topicFQN: string;
@@ -76,15 +76,15 @@ export interface TopicDetailsProps {
     isThread: boolean
   ) => void;
   updateThreadHandler: ThreadUpdatedFunc;
-  lineageTabData: {
-    loadNodeHandler: (node: EntityReference, pos: LineagePos) => void;
-    addLineageHandler: (edge: Edge) => Promise<void>;
-    removeLineageHandler: (data: EdgeData) => void;
-    entityLineageHandler: (lineage: EntityLineage) => void;
-    isLineageLoading?: boolean;
-    entityLineage: EntityLineage;
-    lineageLeafNodes: LeafNodes;
-    isNodeLoading: LoadingNodeState;
-  };
   onExtensionUpdate: (updatedTopic: Topic) => Promise<void>;
+}
+
+export interface TopicConfigObjectInterface {
+  Owner?: Record<string, string | JSX.Element | undefined>;
+  Partitions: number;
+  'Replication Factor'?: number;
+  'Retention Size'?: number;
+  'CleanUp Policies'?: CleanupPolicy[];
+  'Max Message Size'?: number;
+  'Schema Type'?: SchemaType;
 }

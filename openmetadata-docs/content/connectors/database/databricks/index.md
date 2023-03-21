@@ -4,6 +4,21 @@ slug: /connectors/database/databricks
 ---
 
 # Databricks
+<Table>
+
+| Stage | Metadata |Query Usage | Data Profiler | Data Quality | Lineage | DBT | Supported Versions |
+|:------:|:------:|:-----------:|:-------------:|:------------:|:-------:|:---:|:------------------:|
+|  PROD  |   ✅   |      ✅      |       ✅       |       ✅      |    ✅    |  ✅  |  --  |
+
+</Table>
+
+<Table>
+
+| Lineage | Table-level | Column-level |
+|:------:|:-----------:|:-------------:|
+| ✅ | ✅ | ✅ |
+
+</Table>
 
 In this section, we provide guides and references to use the Databricks connector.
 
@@ -11,9 +26,11 @@ Configure and schedule Databricks metadata and profiler workflows from the OpenM
 
 - [Requirements](#requirements)
 - [Metadata Ingestion](#metadata-ingestion)
-- [Query Usage and Lineage Ingestion](#query-usage-and-lineage-ingestion)
+- [Query Usage](#query-usage)
 - [Data Profiler](#data-profiler)
-- [DBT Integration](#dbt-integration)
+- [Data Quality](#data-quality)
+- [Lineage](#lineage)
+- [dbt Integration](#dbt-integration)
 
 If you don't want to use the OpenMetadata Ingestion container to configure the workflows via the UI, then you can check
 the following docs to connect using Airflow SDK or with the CLI.
@@ -133,6 +150,9 @@ the changes.
 - **Host and Port**: Enter the fully qualified hostname and port number for your Databricks deployment in the Host and Port field.
 - **Token**: Generated Token to connect to Databricks.
 - **HTTP Path**: Databricks compute resources URL.
+- **connectionTimeout**: The maximum amount of time (in seconds) to wait for a successful connection to the data source. If the connection attempt takes longer than this timeout period, an error will be returned.
+- **Catalog**: Catalog of the data source(Example: hive_metastore). This is optional parameter, if you would like to restrict the metadata reading to a single catalog. When left blank, OpenMetadata Ingestion attempts to scan all the catalog.
+- **DatabaseSchema**: databaseSchema of the data source. This is optional parameter, if you would like to restrict the metadata reading to a single databaseSchema. When left blank, OpenMetadata Ingestion attempts to scan all the databaseSchema.
 - **Connection Options (Optional)**: Enter the details for any additional connection options that can be sent to Databricks during the connection. These details must be added as Key-Value pairs.
 - **Connection Arguments (Optional)**: Enter the details for any additional connection arguments such as security or protocol configs that can be sent to Databricks during the connection. These details must be added as Key-Value pairs.
   - In case you are using Single-Sign-On (SSO) for authentication, add the `authenticator` details in the Connection Arguments as a Key-Value pair as follows: `"authenticator" : "sso_login_url"`
@@ -166,6 +186,7 @@ caption="Configure Metadata Ingestion Page"
 - **Enable Debug Log (toggle)**: Set the Enable Debug Log toggle to set the default log level to debug, these logs can be viewed later in Airflow.
 - **Mark Deleted Tables (toggle)**: Set the Mark Deleted Tables toggle to flag tables as soft-deleted if they are not present anymore in the source system.
 - **Mark Deleted Tables from Filter Only (toggle)**: Set the Mark Deleted Tables from Filter Only toggle to flag tables as soft-deleted if they are not present anymore within the filtered schema or database only. This flag is useful when you have more than one ingestion pipelines. For example if you have a schema
+- **Auto Tag PII(toggle)**: Auto PII tagging checks for column name to mark PII Sensitive/NonSensitive tag
 
 ### 7. Schedule the Ingestion and Deploy
 
@@ -215,12 +236,12 @@ caption="Edit and Deploy the Ingestion Pipeline"
 
 From the Connection tab, you can also Edit the Service if needed.
 
-## Query Usage and Lineage Ingestion
+## Query Usage
 
 <Tile
 icon="manage_accounts"
 title="Usage Workflow"
-text="Learn more about how to configure the Usage Workflow to ingest Query and Lineage information from the UI."
+text="Learn more about how to configure the Usage Workflow to ingest Query information from the UI."
 link="/connectors/ingestion/workflows/usage"
 />
 
@@ -242,11 +263,21 @@ text="Learn more about how to configure the Data Quality tests from the UI."
 link="/connectors/ingestion/workflows/data-quality"
 />
 
-## DBT Integration
+## Lineage
+
+<Tile
+icon="air"
+title="Lineage Workflow"
+text="Learn more about how to configure the Lineage from the UI."
+link="/connectors/ingestion/workflows/lineage"
+/>
+
+## dbt Integration
 
 <Tile
 icon="mediation"
-title="DBT Integration"
-text="Learn more about how to ingest DBT models' definitions and their lineage."
-link="/connectors/ingestion/workflows/metadata/dbt"
+title="dbt Integration"
+text="Learn more about how to ingest dbt models' definitions and their lineage."
+link="/connectors/ingestion/workflows/dbt"
 />
+

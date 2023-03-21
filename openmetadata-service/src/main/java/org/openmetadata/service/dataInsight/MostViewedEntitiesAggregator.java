@@ -1,6 +1,5 @@
 package org.openmetadata.service.dataInsight;
 
-import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.List;
 import org.elasticsearch.search.aggregations.Aggregations;
@@ -9,7 +8,7 @@ import org.elasticsearch.search.aggregations.metrics.Sum;
 import org.openmetadata.schema.dataInsight.DataInsightChartResult;
 import org.openmetadata.schema.dataInsight.type.MostViewedEntities;
 
-public class MostViewedEntitiesAggregator extends DataInsightAggregatorInterface<MostViewedEntities> {
+public class MostViewedEntitiesAggregator extends DataInsightAggregatorInterface {
 
   public MostViewedEntitiesAggregator(
       Aggregations aggregations, DataInsightChartResult.DataInsightChartType dataInsightChartType) {
@@ -17,16 +16,15 @@ public class MostViewedEntitiesAggregator extends DataInsightAggregatorInterface
   }
 
   @Override
-  public DataInsightChartResult process() throws ParseException {
-    List data = this.aggregate();
-    DataInsightChartResult dataInsightChartResult = new DataInsightChartResult();
-    return dataInsightChartResult.withData(data).withChartType(this.dataInsightChartType);
+  public DataInsightChartResult process() {
+    List<Object> data = this.aggregate();
+    return new DataInsightChartResult().withData(data).withChartType(this.dataInsightChartType);
   }
 
   @Override
-  List<MostViewedEntities> aggregate() throws ParseException {
+  List<Object> aggregate() {
     MultiBucketsAggregation entityFqnBuckets = this.aggregations.get("entityFqn");
-    List<MostViewedEntities> data = new ArrayList();
+    List<Object> data = new ArrayList<>();
     for (MultiBucketsAggregation.Bucket entityFqnBucket : entityFqnBuckets.getBuckets()) {
       String tableFqn = entityFqnBucket.getKeyAsString();
       Sum sumPageViews = entityFqnBucket.getAggregations().get("pageViews");
